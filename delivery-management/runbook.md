@@ -23,14 +23,17 @@ production data.
    - First deploy only: set `BOOTSTRAP_BUSINESS_NAME/_OWNER_NAME/_OWNER_EMAIL/_OWNER_PASSWORD`.
      The app creates the first business + owner when no users exist.
      **Remove `BOOTSTRAP_OWNER_PASSWORD` right after first login.**
-4. **Cloudflare Pages (frontend):** framework Vite (React), root `frontend`,
-   build `npm run build`, output `dist`. Set `VITE_API_URL`
-   (e.g. `https://your-api.onrender.com`, no trailing slash) and
+4. **Cloudflare Worker (frontend):** framework Vite (React), root `frontend`,
+   build `npm run build`, output `dist`, deploy `npx wrangler deploy`.
+   `frontend/wrangler.jsonc` serves `dist/` with SPA fallback
+   (`not_found_handling: single-page-application`) — do NOT add
+   `public/_redirects` (Workers rejects `/* /index.html` as an infinite loop).
+   Set `VITE_API_URL` (e.g. `https://your-api.onrender.com`, no trailing slash) and
    `NODE_VERSION=22`. `VITE_*` is baked in at build time and public — changing
    it requires a redeploy. Never put secrets in `VITE_*`.
 5. **Verify:** `BASE=... EMAIL=... PASSWORD=... ./scripts/smoke.sh`
    against staging first, then production. Deep-link refresh must not 404
-   (`public/_redirects` handles SPA routing).
+   (Worker SPA fallback handles routing).
 
 ## Local dev (docker-compose)
 

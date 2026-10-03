@@ -12,8 +12,8 @@ Owned by root `AGENTS.md`. Serves `delivery-management/` milestones M1–M5.
 - Env: `src/config.js` is the only place that reads `import.meta.env` (`VITE_API_URL`, `VITE_APP_NAME`, `UPCOMING_COUNT`). `VITE_*` is public build-time config; changing it requires a redeploy.
 - All API calls go through `src/lib/api.js` (`apiFetch`/`apiUpload`): prefixes `VITE_API_URL`, attaches the sessionStorage token, clears session on 401, retries network failures with backoff (Render/Neon cold starts). No raw `fetch('/api...')` in pages.
 - Session (token + user + business) persists in sessionStorage; refresh keeps you logged in, 401 logs you out. Plain email + password login, no defaults.
-- SPA routing: `public/_redirects` (`/* /index.html 200`) so Cloudflare Pages deep links and refreshes do not 404.
-- `nginx.conf` + `Dockerfile` are LOCAL ONLY (docker-compose dev). Production frontend is Cloudflare Pages static hosting.
+- SPA routing: production is a Cloudflare Worker (`wrangler.jsonc`, `assets.not_found_handling: single-page-application`) so deep links and refreshes do not 404. Do NOT add `public/_redirects` — Workers static assets reject `/* /index.html` rules as an infinite loop and the deploy fails.
+- `nginx.conf` + `Dockerfile` are LOCAL ONLY (docker-compose dev). Production frontend is the Cloudflare Worker serving `dist/`.
 - Dev proxy `/api` → `VITE_DEV_API_TARGET` (default `http://localhost:4000`); no hardcoded prod URLs. Unauthenticated visits go to `/login`; 401 anywhere clears session and returns to `/login`.
 - Router (`react-router-dom`): `/` Today, `/sell` Sell, `/stock` Stock tabs, `/stock/ocr/:id` OCR review, `/reports` Reports, `/more/*` setup, `/login`. Browser back works; unauthenticated → `/login`; staff → `/` on owner routes.
 - Role nav: staff see Today, Sell, More (account/logout only); staff Today shows sales total + entries for today + yesterday only, no profit/set-asides.
@@ -66,6 +66,6 @@ Owned by root `AGENTS.md`. Serves `delivery-management/` milestones M1–M5.
 - `src/pages/Reports.jsx` — Daily/Weekly/Monthly/Products/Audit tabs, period presets, edit-with-listed-reason, trust-check total row
 - `src/pages/Lists.jsx` — More > Lists: rename/archive/restore dropdown values per kind (owner)
 - `src/pages/OcrReview.jsx` — receipt image + editable suggestions, confirm-before-save only
-- `public/_redirects` — SPA fallback (`/* /index.html 200`) for Cloudflare Pages
+- `wrangler.jsonc` — Worker deploy config (serves `dist/`, SPA fallback); never add `public/_redirects`
 - `.env.example` — public build-time vars (`VITE_API_URL`, `VITE_APP_NAME`, dev proxy target)
 - `vite.config.js` — dev server + api proxy (env target, local only)

@@ -17,7 +17,7 @@ Owned by the repository root `AGENTS.md`. Value-to-deliver lives in `product-man
 - When a milestone is split/deferred/reprioritized, reflect changes in both `roadmap.md` and the affected milestone files in the same change.
 - Milestone docs name the value outcome they deliver by referencing `product-management/value-map.md`.
 - Delivery status is not a claim of visible value.
-- `runbook.md` is the deploy truth: Render (backend) + Cloudflare Pages (frontend) + Neon (Postgres) + R2 (receipts) steps, secret rotation, restore, user creation.
+- `runbook.md` is the deploy truth: Render (backend) + Cloudflare Worker (frontend) + Neon (Postgres) + R2 (receipts) steps, secret rotation, restore, user creation.
 - Staging first: separate Neon branch/project for staging; `scripts/smoke.sh` (BASE/EMAIL/PASSWORD, no defaults) must pass against staging before production.
 
 ## Work Guidance
