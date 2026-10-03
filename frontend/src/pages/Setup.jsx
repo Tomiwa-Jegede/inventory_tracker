@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Badge, Button, Card, EmptyState, Field, ListRow, Money, Sheet, Skeleton } from '../components/ui.jsx';
+import { Badge, Button, Card, ComboSelect, EmptyState, Field, ListRow, Money, Sheet, Skeleton } from '../components/ui.jsx';
 import { apiFetch } from '../lib/api.js';
 import { parseMajorToMinor } from '../lib/money.js';
 
@@ -115,7 +115,7 @@ export default function Setup({ token, isOwner, onAdded, sessionExpired }) {
         <Sheet title={sheet === 'add' ? 'Add product' : `Edit ${sheet.name}`} onClose={() => setSheet(null)}>
           <form onSubmit={save}>
             <Field label="Name"><input value={name} onChange={(e) => setName(e.target.value)} required placeholder="e.g. Burger" /></Field>
-            <Field label="Category"><input value={category} onChange={(e) => setCategory(e.target.value)} placeholder="e.g. Food" /></Field>
+            <ComboSelect kind="category" label="Category" value={category} onChange={setCategory} token={token} sessionExpired={sessionExpired} rememberLast emptyHint="No categories yet. Type to add your first." />
             <Field label="Price" error={formError || undefined}><input value={price} onChange={(e) => setPrice(e.target.value)} inputMode="decimal" required placeholder="e.g. 2500" /></Field>
             <Button type="submit" block>Save</Button>
           </form>

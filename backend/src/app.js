@@ -16,6 +16,7 @@ import adjustmentsRouter from './routes/adjustments.js';
 import editsRouter from './routes/edits.js';
 import ocrRouter from './routes/ocr.js';
 import alertsRouter from './routes/alerts.js';
+import optionsRouter from './routes/options.js';
 import { dbMode, pingDb } from './db/pool.js';
 import { storageMode } from './storage.js';
 
@@ -100,6 +101,7 @@ export function createApp() {
   app.use('/api', editsRouter);
   app.use('/api/ocr', ocrRouter);
   app.use('/api/alerts', alertsRouter);
+  app.use('/api/options', optionsRouter);
   // Local-dev storage only. R2 mode serves receipts via signed URLs instead.
   if (storageMode() === 'local') {
     app.use('/uploads', express.static('uploads'));

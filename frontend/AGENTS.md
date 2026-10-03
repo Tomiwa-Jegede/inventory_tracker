@@ -26,10 +26,12 @@ Owned by root `AGENTS.md`. Serves `delivery-management/` milestones M1–M5.
 - `src/pages/Recurring.jsx` — repeats with next 3 due dates each.
 - `src/pages/Sell.jsx` — daily sales entry (M1); receipt photo optional, never blocking.
 - `src/pages/Today.jsx` — daily close home (M1-M3 numbers, backend only); staff variant sales-only.
-- Past-data edits always require a reason and surface an Edited badge; audit shows who/what/before-after/reason/when.
+- Past-data edits always require a listed reason (+note for Other) and surface an Edited badge; audit shows who/what/before-after/reason/note/when.
+- Pickers, not typing: `ComboSelect` (in `components/ui.jsx`) serves learned lists (category/unit/supplier/overhead_name/expense_name) with search, inline add, MRU order and dedupe; fixed lists (reasons, intervals, periods, cycles) use native selects/segmented controls. Staff get read-only pickers (`allowAdd=false`, server 403s). Last-used supplier/category remembered per device.
 
 ## Work Guidance
 - UI plan v1.0 fully built: design system + router shell + all screens (Today, Sell, Products, Recipes, Overheads, Recurring, Stock/Purchases/Ingredients/Receipts, Reports + Audit, OCR confirm).
+- Don't-Type brief built: ComboSelect learned lists + fixed selects/presets + More > Lists; no categorical field is a plain text input.
 - M1: setup + sales + daily total, usable on phone.
 - M2: purchases, recipes, stock, per-product views.
 - M3: overhead setup, set-aside status, gross/net card.
@@ -46,7 +48,7 @@ Owned by root `AGENTS.md`. Serves `delivery-management/` milestones M1–M5.
 - `src/config.js` — env only: `VITE_API_URL`, `VITE_APP_NAME`, `UPCOMING_COUNT`
 - `src/lib/money.js` — business-prefs currency format + major→minor parse only
 - `src/lib/api.js` — session helpers, auth fetch + upload w/ wake-retry, 401 expire, CSV export
-- `src/components/ui.jsx` — Button, Field, Money, Card, StatCard, ListRow, Badge, EmptyState, Skeleton, Toast, Sheet, Confirm
+- `src/components/ui.jsx` — Button, Field, Money, Card, StatCard, ListRow, Badge, EmptyState, Skeleton, Toast, Sheet, Confirm, ComboSelect
 - `src/components/AppShell.jsx` — sidebar + bottom nav, role-filtered
 - `src/styles.css` — tokens + layout + components
 - `src/pages/Login.jsx` — email/password card, show/hide, inline error
@@ -54,14 +56,15 @@ Owned by root `AGENTS.md`. Serves `delivery-management/` milestones M1–M5.
 - `src/pages/Sell.jsx` — search-first grid, cart + total bar, quick total, optional photo
 - `src/pages/More.jsx` — owner setup links; staff account/logout only
 - `src/pages/Stock.jsx` — tabs: Purchases | Ingredients | Receipts
-- `src/pages/Purchases.jsx` — grouped by date, add Sheet with live cost/unit (Price ÷ Qty)
-- `src/pages/Ingredients.jsx` — stock list + low badge, detail w/ purchase + adjustment history, adjust with reason
+- `src/pages/Purchases.jsx` — grouped by date, unit-aware quantity, last-price prefill, quick quantities, supplier ComboSelect
+- `src/pages/Ingredients.jsx` — stock list + low badge, detail w/ purchase + adjustment history, remove/add segmented adjust with readable reasons
 - `src/pages/Receipts.jsx` — sales with receipt photos, pending-review badges
-- `src/pages/Recurring.jsx` — recurring rules + next 3 due dates
-- `src/pages/Setup.jsx` — Products: Active/Archived filter, add/edit Sheet, archive
-- `src/pages/Recipes.jsx` — product → ingredients + cost preview
-- `src/pages/Overheads.jsx` — overheads + daily rate + payments
-- `src/pages/Reports.jsx` — Daily/Weekly/Monthly/Products/Audit tabs, edit-with-reason, trust-check total row
+- `src/pages/Recurring.jsx` — name ComboSelect, interval presets + first due date, next 3 due dates
+- `src/pages/Setup.jsx` — Products: Active/Archived filter, add/edit Sheet, category ComboSelect, archive
+- `src/pages/Recipes.jsx` — product → ingredients + cost preview, unit on qty field
+- `src/pages/Overheads.jsx` — overheads + name ComboSelect, daily rate, per-row payments with picker
+- `src/pages/Reports.jsx` — Daily/Weekly/Monthly/Products/Audit tabs, period presets, edit-with-listed-reason, trust-check total row
+- `src/pages/Lists.jsx` — More > Lists: rename/archive/restore dropdown values per kind (owner)
 - `src/pages/OcrReview.jsx` — receipt image + editable suggestions, confirm-before-save only
 - `public/_redirects` — SPA fallback (`/* /index.html 200`) for Cloudflare Pages
 - `.env.example` — public build-time vars (`VITE_API_URL`, `VITE_APP_NAME`, dev proxy target)

@@ -64,6 +64,19 @@ export function validateConfig(env = process.env) {
 
   const maxUploadMb = Number(env.MAX_UPLOAD_MB || 5);
 
+  // Dropdown seeds for lookup_options. Env-owned (owners change these without
+  // code edits); the fallbacks below only apply when env is unset, and every
+  // value stays manageable per-business via More > Lists.
+  function parseList(raw, fallback) {
+    const items = String(raw == null || raw === '' ? fallback : raw)
+      .split(',')
+      .map((s) => s.trim().replace(/\s+/g, ' '))
+      .filter(Boolean);
+    return [...new Set(items)];
+  }
+  const defaultUnits = parseList(env.DEFAULT_UNITS, 'piece,kg,g,litre,ml,pack,bag,carton,crate,bottle,tin,dozen');
+  const defaultEditReasons = parseList(env.DEFAULT_EDIT_REASONS, 'Miscounted,Wrong product,Wrong price,Duplicate entry,Customer return,Other');
+
   const config = {
     nodeEnv,
     isProd,
@@ -77,6 +90,8 @@ export function validateConfig(env = process.env) {
     corsOrigins,
     defaultCurrency: env.DEFAULT_CURRENCY || 'USD',
     defaultTimezone: env.DEFAULT_TIMEZONE || 'UTC',
+    defaultUnits,
+    defaultEditReasons,
     seedDemo,
     seedDemoPassword: seedDemoPassword || null,
     allowDemoLogin,

@@ -12,6 +12,7 @@ export default function More({ session, onLogout }) {
           <Link className="listrow" to="/more/recipes">Recipes<span aria-hidden="true"> ›</span></Link>
           <Link className="listrow" to="/more/overheads">Overheads<span aria-hidden="true"> ›</span></Link>
           <Link className="listrow" to="/more/recurring">Recurring expenses<span aria-hidden="true"> ›</span></Link>
+          <Link className="listrow" to="/more/lists">Lists<span aria-hidden="true"> ›</span></Link>
         </Card>
       ) : (
         <Card><p className="stat-label">Staff workspace — sales only. Setup screens are owner-only.</p></Card>

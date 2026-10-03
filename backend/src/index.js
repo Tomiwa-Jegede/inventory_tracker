@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import config from './config.js'; // validates env first — throws on bad/missing secrets
 import { createApp } from './app.js';
-import { ensureBootstrap, seedDemo } from './db/repo.js';
+import { backfillAllBusinesses, ensureBootstrap, seedDemo } from './db/repo.js';
 import { closePool, dbMode } from './db/pool.js';
 
 const app = createApp();
@@ -11,6 +11,7 @@ const server = app.listen(config.port, async () => {
   try {
     await ensureBootstrap();
     await seedDemo();
+    await backfillAllBusinesses();
   } catch (e) {
     console.error('startup task failed:', e.message);
   }

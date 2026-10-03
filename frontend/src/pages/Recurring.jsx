@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Button, Card, EmptyState, Field, ListRow, Money, Sheet, Skeleton } from '../components/ui.jsx';
+import { Button, Card, ComboSelect, EmptyState, Field, ListRow, Money, Sheet, Skeleton } from '../components/ui.jsx';
 import { apiFetch, todayISO } from '../lib/api.js';
 import { parseMajorToMinor } from '../lib/money.js';
 
@@ -25,15 +25,21 @@ export default function Recurring({ token, sessionExpired }) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [amount, setAmount] = useState('');
-  const [intervalDays, setIntervalDays] = useState('3');
+  const [preset, setPreset] = useState('3');
+  const [customDays, setCustomDays] = useState('');
+  const [firstDue, setFirstDue] = useState(todayISO());
+  const [ingredientNames, setIngredientNames] = useState([]);
 
   async function load() {
     setLoading(true);
     setError('');
     try {
-      const res = await apiFetch('/api/recurring', token);
-      if (!res.ok) throw new Error('load failed');
-      setRows(await res.json());
+      const [r, i] = await Promise.all([
+        apiFetch('/api/recurring', token),
+        apiFetch('/api/ingredients', token),
+      ]);
+      if (r.ok) setRows(await r.json());
+      if (i.ok) setIngredientNames((await i.json()).map((x) => x.name));
     } catch (e) {
       if (e?.code === 401 && sessionExpired) sessionExpired();
       else setError('Could not load recurring expenses. Check connection and retry.');
@@ -52,12 +58,13 @@ export default function Recurring({ token, sessionExpired }) {
   async function add(e) {
     e.preventDefault();
     const amount_minor = parseMajorToMinor(amount);
-    if (!name.trim() || amount_minor == null) return;
+    const interval_days = preset === 'custom' ? Number(customDays) : Number(preset);
+    if (!name.trim() || amount_minor == null || !interval_days || interval_days <= 0) return;
     const res = await apiFetch('/api/recurring', token, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: name.trim(), amount_minor, interval_days: Number(intervalDays), next_due_date: todayISO() }),
+      body: JSON.stringify({ name: name.trim(), amount_minor, interval_days, next_due_date: firstDue }),
     });
-    if (res.ok) { setName(''); setAmount(''); setOpen(false); load(); }
+    if (res.ok) { setName(''); setAmount(''); setOpen(false); setFirstDue(todayISO()); load(); }
   }
 
   return (
@@ -75,9 +82,18 @@ export default function Recurring({ token, sessionExpired }) {
       {open && (
         <Sheet title="Add recurring" onClose={() => setOpen(false)}>
           <form onSubmit={add}>
-            <Field label="Name"><input value={name} onChange={(e) => setName(e.target.value)} required placeholder="e.g. Charcoal" /></Field>
+            <ComboSelect kind="expense_name" label="Name" value={name} onChange={setName} token={token} sessionExpired={sessionExpired} extraOptions={ingredientNames} emptyHint="No expense names yet. Type to add one." />
             <Field label="Amount"><input value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" required placeholder="e.g. 5000" /></Field>
-            <Field label="Every N days"><input value={intervalDays} onChange={(e) => setIntervalDays(e.target.value)} inputMode="numeric" required /></Field>
+            <Field label="Repeats">
+              <select value={preset} onChange={(e) => setPreset(e.target.value)} aria-label="Repeat interval">
+                <option value="1">Every day</option><option value="2">Every 2 days</option>
+                <option value="3">Every 3 days</option><option value="7">Weekly</option>
+                <option value="14">Every 2 weeks</option><option value="30">Monthly</option>
+                <option value="custom">Custom…</option>
+              </select>
+            </Field>
+            {preset === 'custom' && <Field label="Every N days"><input value={customDays} onChange={(e) => setCustomDays(e.target.value)} inputMode="numeric" required /></Field>}
+            <Field label="First due date"><input type="date" value={firstDue} onChange={(e) => setFirstDue(e.target.value)} required /></Field>
             <Button type="submit" block>Save</Button>
           </form>
         </Sheet>

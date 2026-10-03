@@ -8,6 +8,31 @@ function addDays(dateStr, n) {
   return d.toISOString().slice(0, 10);
 }
 
+function mondayOf(dateStr) {
+  const d = new Date(`${dateStr}T00:00:00Z`);
+  const dow = (d.getUTCDay() + 6) % 7; // Monday = 0
+  d.setUTCDate(d.getUTCDate() - dow);
+  return d.toISOString().slice(0, 10);
+}
+
+function monthStart(dateStr) {
+  return dateStr.slice(0, 8) + '01';
+}
+
+function applyPeriod(p, setFrom, setTo) {
+  const t = todayISO();
+  if (p === 'today') { setFrom(t); setTo(t); }
+  else if (p === 'yesterday') { const y = addDays(t, -1); setFrom(y); setTo(y); }
+  else if (p === 'week') { setFrom(mondayOf(t)); setTo(t); }
+  else if (p === 'lastweek') { setFrom(addDays(mondayOf(t), -7)); setTo(addDays(mondayOf(t), -1)); }
+  else if (p === 'month') { setFrom(monthStart(t)); setTo(t); }
+  else if (p === 'lastmonth') {
+    const first = monthStart(t);
+    const last = addDays(first, -1);
+    setFrom(monthStart(last)); setTo(last);
+  }
+}
+
 export default function Reports({ token, isOwner, sessionExpired }) {
   const [tab, setTab] = useState('daily');
   const [from, setFrom] = useState(todayISO());
@@ -25,11 +50,21 @@ export default function Reports({ token, isOwner, sessionExpired }) {
   const [editing, setEditing] = useState(null);
   const [editQty, setEditQty] = useState('');
   const [editReason, setEditReason] = useState('');
+  const [editNote, setEditNote] = useState('');
+  const [editReasons, setEditReasons] = useState([]);
+  const [period, setPeriod] = useState('today');
+
+  function choosePeriod(p) {
+    setPeriod(p);
+    if (p !== 'custom') applyPeriod(p, setFrom, setTo);
+  }
 
   async function load() {
     setLoading(true);
     setError('');
     try {
+      const er = await apiFetch('/api/options?kind=edit_reason', token);
+      if (er.ok) setEditReasons(await er.json());
       if (tab === 'daily') {
         const [d, s, a, p] = await Promise.all([
           apiFetch(`/api/reports/daily?sale_date=${from}`, token),
@@ -92,19 +127,14 @@ export default function Reports({ token, isOwner, sessionExpired }) {
   const prodSum = breakdown.reduce((s, b) => s + b.profit_minor, 0);
   const maxTrend = Math.max(1, ...((trends?.days || []).map((d) => Math.abs(d.net_minor || 0))));
 
-  function preset(n) {
-    const t = todayISO();
-    setTo(t);
-    setFrom(addDays(t, -(n - 1)));
-  }
-
   async function saveEdit(e) {
     e.preventDefault();
-    if (!editReason.trim()) return;
+    if (!editReason) return;
+    if (editReason === 'Other' && !editNote.trim()) return;
     try {
       const res = await apiFetch(`/api/sales/${editing.id}`, token, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ qty: Number(editQty), reason: editReason.trim() }),
+        body: JSON.stringify({ qty: Number(editQty), reason: editReason, ...(editReason === 'Other' ? { note: editNote.trim() } : {}) }),
       });
       if (!res.ok) return;
       setEditing(null);
@@ -125,15 +155,20 @@ export default function Reports({ token, isOwner, sessionExpired }) {
         ))}
       </div>
       <Card>
-        <div className="row">
-          <button className="chip" onClick={() => preset(1)}>Today</button>
-          <button className="chip" onClick={() => preset(7)}>7 days</button>
-          <button className="chip" onClick={() => preset(30)}>30 days</button>
-        </div>
-        <div className="row mt">
-          <Field label="From"><input type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></Field>
-          <Field label="To"><input type="date" value={to} onChange={(e) => setTo(e.target.value)} /></Field>
-        </div>
+        <Field label="Period">
+          <select value={period} onChange={(e) => choosePeriod(e.target.value)} aria-label="Report period">
+            <option value="today">Today</option><option value="yesterday">Yesterday</option>
+            <option value="week">This week</option><option value="lastweek">Last week</option>
+            <option value="month">This month</option><option value="lastmonth">Last month</option>
+            <option value="custom">Custom…</option>
+          </select>
+        </Field>
+        {period === 'custom' && (
+          <div className="row mt">
+            <Field label="From"><input type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></Field>
+            <Field label="To"><input type="date" value={to} onChange={(e) => setTo(e.target.value)} /></Field>
+          </div>
+        )}
         <Button onClick={load} disabled={loading} block>{loading ? 'Loading…' : 'Load'}</Button>
       </Card>
       {error && <Card><p role="alert">{error}</p><Button onClick={load}>Retry</Button></Card>}
@@ -171,7 +206,7 @@ export default function Reports({ token, isOwner, sessionExpired }) {
               title={`${s.qty} × ${prodName[s.product_id] || s.product_id}`}
               subtitle={editedIds.has(s.id) ? 'corrected' : s.created_at}
               badge={editedIds.has(s.id) ? <Badge>edited</Badge> : null}
-              trailing={<span><Money minor={s.total_minor} />{isOwner && <Button variant="ghost" onClick={() => { setEditing(s); setEditQty(String(s.qty)); setEditReason(''); }}>Edit</Button>}</span>}
+              trailing={<span><Money minor={s.total_minor} />{isOwner && <Button variant="ghost" onClick={() => { setEditing(s); setEditQty(String(s.qty)); setEditReason(''); setEditNote(''); }}>Edit</Button>}</span>}
             />
           ))}
           {(salesRows?.dayTotals || []).map((t) => (
@@ -206,7 +241,7 @@ export default function Reports({ token, isOwner, sessionExpired }) {
             <ListRow
               key={a.id}
               title={`${a.actor} · ${a.action}`}
-              subtitle={`${a.created_at} · reason: ${a.reason} · before ${JSON.stringify(a.before?.qty ?? a.before?.total_minor ?? '')} → after ${JSON.stringify(a.after?.qty ?? a.after?.total_minor ?? '')}`}
+              subtitle={`${a.created_at} · reason: ${a.reason}${a.note ? ` — ${a.note}` : ''} · before ${JSON.stringify(a.before?.qty ?? a.before?.total_minor ?? '')} → after ${JSON.stringify(a.after?.qty ?? a.after?.total_minor ?? '')}`}
               badge={<Badge>edited</Badge>}
             />
           ))}
@@ -217,7 +252,15 @@ export default function Reports({ token, isOwner, sessionExpired }) {
         <Sheet title="Edit sale" onClose={() => setEditing(null)}>
           <form onSubmit={saveEdit}>
             <Field label="Quantity"><input value={editQty} onChange={(e) => setEditQty(e.target.value)} inputMode="numeric" required /></Field>
-            <Field label="Reason (required)" help="Logged in audit with before/after."><input value={editReason} onChange={(e) => setEditReason(e.target.value)} required placeholder="e.g. miscounted" /></Field>
+            <Field label="Reason (required)" help="Logged in audit with before/after.">
+              <select value={editReason} onChange={(e) => setEditReason(e.target.value)} required aria-label="Edit reason">
+                <option value="">Choose a reason</option>
+                {editReasons.map((r) => <option key={r.id} value={r.value}>{r.value}</option>)}
+              </select>
+            </Field>
+            {editReason === 'Other' && (
+              <Field label="Note (required for Other)"><input value={editNote} onChange={(e) => setEditNote(e.target.value)} required placeholder="What happened?" /></Field>
+            )}
             <Button type="submit" block>Save correction</Button>
           </form>
         </Sheet>

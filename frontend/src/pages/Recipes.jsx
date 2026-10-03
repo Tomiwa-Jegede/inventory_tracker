@@ -58,6 +58,7 @@ export default function Recipes({ token, isOwner, sessionExpired }) {
   }, [purchases]);
 
   const ingName = useMemo(() => Object.fromEntries(ingredients.map((i) => [i.id, `${i.name} (${i.unit})`])), [ingredients]);
+  const ingUnit = useMemo(() => Object.fromEntries(ingredients.map((i) => [i.id, i.unit])), [ingredients]);
   const costPreview = lines.reduce((s, l) => s + Number(l.qty_per_sale) * (latestCost[l.ingredient_id] || 0), 0);
   const selectedProduct = products.find((p) => String(p.id) === String(productId));
 
@@ -122,7 +123,7 @@ export default function Recipes({ token, isOwner, sessionExpired }) {
                   {ingredients.map((i) => <option key={i.id} value={i.id}>{i.name} ({i.unit})</option>)}
                 </select>
               </Field>
-              <Field label="Qty per sale"><input value={qty} onChange={(e) => setQty(e.target.value)} inputMode="decimal" required placeholder="e.g. 2" /></Field>
+              <Field label={ingId && ingUnit[ingId] ? `Qty per sale (${ingUnit[ingId]})` : 'Qty per sale'}><input value={qty} onChange={(e) => setQty(e.target.value)} inputMode="decimal" required placeholder="e.g. 2" /></Field>
               <Button type="submit" block>Add ingredient</Button>
             </form>
           </Card>

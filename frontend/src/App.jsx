@@ -15,6 +15,7 @@ const Setup = lazy(() => import('./pages/Setup.jsx'));
 const Recipes = lazy(() => import('./pages/Recipes.jsx'));
 const Overheads = lazy(() => import('./pages/Overheads.jsx'));
 const Recurring = lazy(() => import('./pages/Recurring.jsx'));
+const Lists = lazy(() => import('./pages/Lists.jsx'));
 const OcrReview = lazy(() => import('./pages/OcrReview.jsx'));
 
 function RequireAuth({ session, children }) {
@@ -57,6 +58,7 @@ function ShellRoutes({ session, onLogout, sessionExpired }) {
         <Route path="more/recipes" element={<RequireOwner session={session}><Recipes token={token} isOwner={isOwner} sessionExpired={expired} /></RequireOwner>} />
         <Route path="more/overheads" element={<RequireOwner session={session}><Overheads token={token} isOwner={isOwner} onChanged={() => {}} sessionExpired={expired} /></RequireOwner>} />
         <Route path="more/recurring" element={<RequireOwner session={session}><Recurring token={token} sessionExpired={expired} /></RequireOwner>} />
+        <Route path="more/lists" element={<RequireOwner session={session}><Lists token={token} isOwner={isOwner} sessionExpired={expired} /></RequireOwner>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

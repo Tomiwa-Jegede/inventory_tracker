@@ -18,9 +18,11 @@ export async function createBusiness({ name, currency, timezone }) {
   if (!usePg()) {
     const b = { id: `b-${randomUUID().slice(0, 8)}`, created_at: new Date().toISOString(), ...row };
     store.businesses.push(b);
+    await ensureOptionDefaults(b.id);
     return b;
   }
   const r = await query(`INSERT INTO businesses (name, currency, timezone) VALUES ($1,$2,$3) RETURNING *`, [row.name, row.currency, row.timezone]);
+  await ensureOptionDefaults(r.rows[0].id);
   return r.rows[0];
 }
 
@@ -150,12 +152,14 @@ export async function createProduct({ business_id, name, category, price_minor, 
   if (!usePg()) {
     const p = { id: `p-${Date.now()}`, business_id, name, category: category || 'General', price_minor, tracks_stock: tracks_stock !== false, is_active: true, created_at: new Date().toISOString() };
     store.products.push(p);
+    await upsertOption(business_id, 'category', p.category);
     return p;
   }
   const r = await query(
     `INSERT INTO products (business_id, name, category, price_minor, tracks_stock) VALUES ($1,$2,$3,$4,$5) RETURNING *`,
     [business_id, name, category || 'General', price_minor, tracks_stock !== false]
   );
+  await upsertOption(business_id, 'category', r.rows[0].category);
   return r.rows[0];
 }
 
@@ -258,9 +262,11 @@ export async function createIngredient({ business_id, name, unit, low_stock_leve
   if (!usePg()) {
     const ing = { id: `g-${Date.now()}`, business_id, name, unit: unit || 'piece', stock_qty: 0, low_stock_level: Number(low_stock_level) || 0, created_at: new Date().toISOString() };
     store.ingredients.push(ing);
+    await upsertOption(business_id, 'unit', ing.unit);
     return ing;
   }
   const r = await query(`INSERT INTO ingredients (business_id, name, unit, low_stock_level) VALUES ($1,$2,$3,$4) RETURNING *`, [business_id, name, unit || 'piece', Number(low_stock_level) || 0]);
+  await upsertOption(business_id, 'unit', r.rows[0].unit || unit || 'piece');
   return { ...r.rows[0], stock_qty: Number(r.rows[0].stock_qty) };
 }
 
@@ -297,6 +303,7 @@ export async function createPurchase({ business_id, ingredient_id, qty, total_mi
     store.purchases.push(p);
     const ing = store.ingredients.find((i) => i.id === ingredient_id);
     if (ing) ing.stock_qty += qty;
+    if (p.supplier) await upsertOption(business_id, 'supplier', p.supplier);
     return p;
   }
   const r = await query(
@@ -305,6 +312,7 @@ export async function createPurchase({ business_id, ingredient_id, qty, total_mi
     [business_id, ingredient_id, qty, total_minor, cost_per_unit_minor, purchase_date, supplier || null, note || null, entered_by || null]
   );
   await query(`UPDATE ingredients SET stock_qty = stock_qty + $1 WHERE id=$2`, [qty, ingredient_id]);
+  if (r.rows[0].supplier) await upsertOption(business_id, 'supplier', r.rows[0].supplier);
   return { ...r.rows[0], qty: Number(r.rows[0].qty) };
 }
 
@@ -374,10 +382,12 @@ export async function createOverhead({ business_id, name, amount_minor, frequenc
   if (!usePg()) {
     const o = { id: `o-${Date.now()}`, business_id, name, amount_minor, frequency, custom_days: frequency === 'custom' ? Number(custom_days) : null, next_due_date, is_active: true, created_at: new Date().toISOString(), history: [{ amount_minor, frequency, custom_days: frequency === 'custom' ? Number(custom_days) : null, from_date: today }] };
     store.overheads.push(o);
+    await upsertOption(business_id, 'overhead_name', name);
     return o;
   }
   const r = await query(`INSERT INTO overheads (business_id, name, amount_minor, frequency, custom_days, next_due_date) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`, [business_id, name, amount_minor, frequency, frequency === 'custom' ? Number(custom_days) : null, next_due_date]);
   await query(`INSERT INTO overhead_history (overhead_id, amount_minor, frequency, custom_days, from_date) VALUES ($1,$2,$3,$4,$5)`, [r.rows[0].id, amount_minor, frequency, frequency === 'custom' ? Number(custom_days) : null, today]);
+  await upsertOption(business_id, 'overhead_name', name);
   return { ...r.rows[0], history: [{ amount_minor, frequency, custom_days: frequency === 'custom' ? Number(custom_days) : null, from_date: today }] };
 }
 
@@ -445,9 +455,11 @@ export async function createRecurring({ business_id, name, amount_minor, interva
   if (!usePg()) {
     const rule = { id: `rr-${Date.now()}`, business_id, name, amount_minor, interval_days, next_due_date, is_active: true };
     store.recurringRules.push(rule);
+    await upsertOption(business_id, 'expense_name', name);
     return rule;
   }
   const r = await query(`INSERT INTO recurring_rules (business_id, name, amount_minor, interval_days, next_due_date) VALUES ($1,$2,$3,$4,$5) RETURNING *`, [business_id, name, amount_minor, interval_days, next_due_date]);
+  await upsertOption(business_id, 'expense_name', name);
   return r.rows[0];
 }
 
@@ -471,17 +483,17 @@ export async function listAdjustments(business_id, sale_date) {
 }
 
 // ---------- audit ----------
-export async function logAudit({ business_id, actor, action, target, before, after, reason }) {
+export async function logAudit({ business_id, actor, action, target, before, after, reason, note }) {
   if (!usePg()) {
-    memAudit({ business_id, actor, action, target, before, after, reason });
+    memAudit({ business_id, actor, action, target, before, after, reason, note: note || null });
     return;
   }
-  await query(`INSERT INTO audit_log (business_id, actor, action, target, before_json, after_json, reason) VALUES ($1,$2,$3,$4,$5,$6,$7)`, [business_id, actor || null, action, target || null, before ? JSON.stringify(before) : null, after ? JSON.stringify(after) : null, reason || null]);
+  await query(`INSERT INTO audit_log (business_id, actor, action, target, before_json, after_json, reason, note) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`, [business_id, actor || null, action, target || null, before ? JSON.stringify(before) : null, after ? JSON.stringify(after) : null, reason || null, note || null]);
 }
 
 export async function listAudit(business_id, limit = 100) {
   if (!usePg()) return store.auditLog.filter((a) => a.business_id === business_id).slice(-limit);
-  const r = await query(`SELECT id, business_id, actor, action, target, before_json AS "before", after_json AS "after", reason, created_at FROM audit_log WHERE business_id=$1 ORDER BY created_at DESC LIMIT $2`, [business_id, limit]);
+  const r = await query(`SELECT id, business_id, actor, action, target, before_json AS "before", after_json AS "after", reason, note, created_at FROM audit_log WHERE business_id=$1 ORDER BY created_at DESC LIMIT $2`, [business_id, limit]);
   return r.rows.reverse();
 }
 
@@ -528,4 +540,149 @@ export async function createOcrAttempt({ business_id, receipt_photo_url, suggest
 
 export function newId(prefix) {
   return `${prefix}-${randomUUID().slice(0, 8)}`;
+}
+
+// ---------- lookup options ("don't type" dropdowns) ----------
+// Drives pickers; existing TEXT columns stay the source of record.
+export const OPTION_KINDS = ['category', 'unit', 'supplier', 'overhead_name', 'expense_name', 'edit_reason'];
+
+// Rename propagation target per kind (TEXT column kept in sync).
+const KIND_COLUMNS = {
+  category: { table: 'products', column: 'category' },
+  unit: { table: 'ingredients', column: 'unit' },
+  supplier: { table: 'purchases', column: 'supplier' },
+  overhead_name: { table: 'overheads', column: 'name' },
+  expense_name: { table: 'recurring_rules', column: 'name' },
+  edit_reason: null,
+};
+
+export function normOpt(v) {
+  return String(v == null ? '' : v).trim().replace(/\s+/g, ' ');
+}
+
+export async function listOptions(business_id, kind, includeArchived = false) {
+  if (!OPTION_KINDS.includes(kind)) return [];
+  if (!usePg()) {
+    return store.lookupOptions
+      .filter((o) => o.business_id === business_id && o.kind === kind && (includeArchived || !o.archived))
+      .sort((a, b) => (a.last_used_at < b.last_used_at ? 1 : -1));
+  }
+  const r = await query(`SELECT * FROM lookup_options WHERE business_id=$1 AND kind=$2 AND ($3 OR archived=false) ORDER BY last_used_at DESC`, [business_id, kind, includeArchived]);
+  return r.rows;
+}
+
+export async function findOption(id, business_id) {
+  if (!usePg()) return store.lookupOptions.find((o) => String(o.id) === String(id) && o.business_id === business_id) || null;
+  const r = await query(`SELECT * FROM lookup_options WHERE id=$1 AND business_id=$2`, [id, business_id]);
+  return r.rows[0] || null;
+}
+
+// Learn a value: case-insensitive match touches last_used_at, else create.
+export async function upsertOption(business_id, kind, value) {
+  const v = normOpt(value);
+  if (!OPTION_KINDS.includes(kind) || !v) return null;
+  if (!usePg()) {
+    const hit = store.lookupOptions.find((o) => o.business_id === business_id && o.kind === kind && o.value.toLowerCase() === v.toLowerCase());
+    if (hit) {
+      hit.archived = false;
+      hit.last_used_at = new Date().toISOString();
+      return hit;
+    }
+    const o = { id: `opt-${randomUUID().slice(0, 8)}`, business_id, kind, value: v, archived: false, last_used_at: new Date().toISOString(), created_at: new Date().toISOString() };
+    store.lookupOptions.push(o);
+    return o;
+  }
+  const hit = await query(`SELECT * FROM lookup_options WHERE business_id=$1 AND kind=$2 AND lower(value)=lower($3)`, [business_id, kind, v]);
+  if (hit.rows[0]) {
+    const r = await query(`UPDATE lookup_options SET archived=false, last_used_at=now() WHERE id=$1 RETURNING *`, [hit.rows[0].id]);
+    return r.rows[0];
+  }
+  const r = await query(`INSERT INTO lookup_options (business_id, kind, value) VALUES ($1,$2,$3) RETURNING *`, [business_id, kind, v]);
+  return r.rows[0];
+}
+
+// Seed unit + edit-reason defaults for a business (idempotent; env-owned).
+export async function ensureOptionDefaults(business_id) {
+  for (const v of config.defaultUnits || []) await upsertOption(business_id, 'unit', v);
+  for (const v of config.defaultEditReasons || []) await upsertOption(business_id, 'edit_reason', v);
+}
+
+// Backfill dropdowns from existing distinct TEXT values (runs at boot + tests).
+export async function backfillOptions(business_id) {
+  if (!usePg()) {
+    for (const p of store.products.filter((x) => x.business_id === business_id && normOpt(x.category))) await upsertOption(business_id, 'category', p.category);
+    for (const i of store.ingredients.filter((x) => x.business_id === business_id && normOpt(x.unit))) await upsertOption(business_id, 'unit', i.unit);
+    for (const p of store.purchases.filter((x) => x.business_id === business_id && normOpt(x.supplier))) await upsertOption(business_id, 'supplier', p.supplier);
+    for (const o of store.overheads.filter((x) => x.business_id === business_id && normOpt(x.name))) await upsertOption(business_id, 'overhead_name', o.name);
+    for (const r of store.recurringRules.filter((x) => x.business_id === business_id && normOpt(x.name))) await upsertOption(business_id, 'expense_name', r.name);
+    return;
+  }
+  for (const [kind, col] of [['category', 'category'], ['unit', 'unit'], ['supplier', 'supplier']]) {
+    const { table, column } = KIND_COLUMNS[kind];
+    void col;
+    const rows = await query(`SELECT DISTINCT btrim(${column}) AS v FROM ${table} WHERE business_id=$1 AND btrim(${column}) <> ''`, [business_id]);
+    for (const r of rows.rows) await upsertOption(business_id, kind, r.v);
+  }
+  for (const [kind, table] of [['overhead_name', 'overheads'], ['expense_name', 'recurring_rules']]) {
+    const rows = await query(`SELECT DISTINCT btrim(name) AS v FROM ${table} WHERE business_id=$1 AND btrim(name) <> ''`, [business_id]);
+    for (const r of rows.rows) await upsertOption(business_id, kind, r.v);
+  }
+}
+
+export async function backfillAllBusinesses() {
+  const ids = usePg()
+    ? (await query(`SELECT id FROM businesses`)).rows.map((r) => r.id)
+    : store.businesses.map((b) => b.id);
+  for (const id of ids) {
+    await ensureOptionDefaults(id);
+    await backfillOptions(id);
+  }
+}
+
+// Rename or archive. Renames propagate to the matching TEXT column in one
+// transaction (pg) so reports stay grouped; memory mirrors the same steps.
+export async function renameOption(id, business_id, { value, archived }) {
+  const opt = await findOption(id, business_id);
+  if (!opt) return null;
+  const target = KIND_COLUMNS[opt.kind];
+  if (value !== undefined) {
+    const v = normOpt(value);
+    if (!v) return null;
+    const dupe = (await listOptions(business_id, opt.kind)).find((o) => String(o.id) !== String(id) && o.value.toLowerCase() === v.toLowerCase());
+    if (dupe) return { conflict: dupe };
+    if (!usePg()) {
+      if (target && !opt.archived) {
+        const cols = { products: store.products, ingredients: store.ingredients, purchases: store.purchases, overheads: store.overheads, recurringRules: store.recurringRules };
+        for (const row of cols[target.table].filter((r) => r.business_id === business_id && String(r[target.column] ?? '').toLowerCase() === opt.value.toLowerCase())) {
+          row[target.column] = v;
+        }
+      }
+      opt.value = v;
+      if (archived !== undefined) opt.archived = archived !== false;
+      opt.last_used_at = new Date().toISOString();
+      return { option: opt };
+    }
+    await query('BEGIN');
+    try {
+      if (target) {
+        await query(`UPDATE ${target.table} SET ${target.column}=$1 WHERE business_id=$2 AND lower(${target.column})=lower($3)`, [v, business_id, opt.value]);
+      }
+      const r = await query(`UPDATE lookup_options SET value=$1, archived=COALESCE($2, archived), last_used_at=now() WHERE id=$3 RETURNING *`,
+        [v, archived === undefined ? null : archived !== false, id]);
+      await query('COMMIT');
+      return { option: r.rows[0] };
+    } catch (e) {
+      await query('ROLLBACK');
+      throw e;
+    }
+  }
+  if (archived !== undefined) {
+    if (!usePg()) {
+      opt.archived = archived !== false;
+      return { option: opt };
+    }
+    const r = await query(`UPDATE lookup_options SET archived=$1 WHERE id=$2 RETURNING *`, [archived !== false, id]);
+    return { option: r.rows[0] };
+  }
+  return { option: opt };
 }

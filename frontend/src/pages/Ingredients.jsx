@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Badge, Button, Card, EmptyState, Field, ListRow, Sheet, Skeleton } from '../components/ui.jsx';
+import { Badge, Button, Card, ComboSelect, EmptyState, Field, ListRow, Sheet, Skeleton } from '../components/ui.jsx';
 import { apiFetch } from '../lib/api.js';
 
 export default function Ingredients({ token, sessionExpired }) {
@@ -14,6 +14,7 @@ export default function Ingredients({ token, sessionExpired }) {
   const [unit, setUnit] = useState('');
   const [adjQty, setAdjQty] = useState('');
   const [adjReason, setAdjReason] = useState('spoilage');
+  const [adjDir, setAdjDir] = useState('remove');
 
   async function load() {
     setLoading(true);
@@ -59,9 +60,11 @@ export default function Ingredients({ token, sessionExpired }) {
 
   async function adjust(e) {
     e.preventDefault();
+    const amount = Math.abs(Number(adjQty));
+    if (!amount) return;
     const res = await apiFetch(`/api/ingredients/${detail.id}/adjust`, token, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ qty_change: Number(adjQty), reason: adjReason }),
+      body: JSON.stringify({ qty_change: adjDir === 'remove' ? -amount : amount, reason: adjReason }),
     });
     if (res.ok) { setAdjQty(''); load(); const r = await apiFetch('/api/reports/stock', token); if (r.ok) { const all = await r.json(); setDetail(all.find((x) => String(x.id) === String(detail.id)) || null); } }
   }
@@ -88,7 +91,7 @@ export default function Ingredients({ token, sessionExpired }) {
         <Sheet title="Add ingredient" onClose={() => setOpenAdd(false)}>
           <form onSubmit={add}>
             <Field label="Name"><input value={name} onChange={(e) => setName(e.target.value)} required placeholder="e.g. Bun" /></Field>
-            <Field label="Custom unit"><input value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="e.g. piece, kg, litre" /></Field>
+            <ComboSelect kind="unit" label="Unit" value={unit} onChange={setUnit} token={token} sessionExpired={sessionExpired} emptyHint="No units yet. Type to add one." />
             <Button type="submit" block>Save</Button>
           </form>
         </Sheet>
@@ -105,12 +108,16 @@ export default function Ingredients({ token, sessionExpired }) {
             <ListRow key={a.id} title={`${a.after?.qty_change ?? ''} (${a.reason})`} subtitle={a.created_at} badge={<Badge>edited</Badge>} />
           ))}
           <form onSubmit={adjust} className="mt">
-            <Field label="Adjust stock (negative = waste)" help="Reason required — logged with history.">
-              <input value={adjQty} onChange={(e) => setAdjQty(e.target.value)} inputMode="decimal" required placeholder="e.g. -2" />
+            <div className="tabs" role="tablist" aria-label="Adjustment direction">
+              <button type="button" role="tab" aria-selected={adjDir === 'remove'} onClick={() => setAdjDir('remove')}>Remove stock</button>
+              <button type="button" role="tab" aria-selected={adjDir === 'add'} onClick={() => setAdjDir('add')}>Add stock</button>
+            </div>
+            <Field label={`Quantity (${detail.unit})`} help="Positive number — the app applies the sign. Reason required, logged with history.">
+              <input value={adjQty} onChange={(e) => setAdjQty(e.target.value)} inputMode="decimal" required aria-label={`Quantity in ${detail.unit}`} />
             </Field>
             <Field label="Reason">
               <select value={adjReason} onChange={(e) => setAdjReason(e.target.value)}>
-                <option value="spoilage">spoilage</option><option value="waste">waste</option><option value="correction">correction</option><option value="other">other</option>
+                <option value="spoilage">Spoilage</option><option value="waste">Waste</option><option value="correction">Count correction</option><option value="other">Other</option>
               </select>
             </Field>
             <Button type="submit" block>Save adjustment</Button>

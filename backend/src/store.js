@@ -24,6 +24,8 @@ export const store = {
   auditLog: [],
   // M5 stop point
   ocrLog: [],
+  // Lookup options (dropdown values per business)
+  lookupOptions: [],
   // R2-mode receipt ledger mirror
   receipts: [],
 };
