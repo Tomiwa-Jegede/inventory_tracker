@@ -8,9 +8,12 @@ CREATE TABLE IF NOT EXISTS lookup_options (
   value TEXT NOT NULL,
   archived BOOLEAN NOT NULL DEFAULT false,
   last_used_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  UNIQUE (business_id, kind, lower(value))
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- Expression uniqueness needs an index: UNIQUE constraints take plain
+-- columns only in Postgres.
+CREATE UNIQUE INDEX IF NOT EXISTS lookup_options_biz_kind_value
+  ON lookup_options (business_id, kind, lower(value));
 
 -- Sale-edit notes live beside the reason on the audit entry.
 ALTER TABLE audit_log ADD COLUMN IF NOT EXISTS note TEXT;
