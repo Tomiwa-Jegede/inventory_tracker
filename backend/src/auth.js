@@ -1,31 +1,42 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { findUserByEmail, findUserById, createUser } from './db/repo.js';
-import { parseToken, publicUser } from './store.js';
-
-const SECRET = process.env.AUTH_SECRET || 'dev-only-secret-change-in-prod';
-const JWT_DAYS = 7;
+import config from './config.js';
+import { findUserByEmail, findUserById, findBusinessById, createUser } from './db/repo.js';
+import { publicUser } from './store.js';
 
 export function signJwt(user) {
-  return jwt.sign({ id: user.id, role: user.role, business_id: user.business_id }, SECRET, { expiresIn: `${JWT_DAYS}d` });
+  return jwt.sign(
+    { id: user.id, role: user.role, business_id: user.business_id },
+    config.authSecret,
+    { expiresIn: config.jwtExpiresIn }
+  );
+}
+
+async function sessionFor(user) {
+  const business = await findBusinessById(user.business_id);
+  return {
+    token: signJwt(user),
+    user: publicUser(user),
+    business: business
+      ? { id: business.id, name: business.name, currency: business.currency, timezone: business.timezone }
+      : null,
+  };
 }
 
 export async function requireAuth(req, res, next) {
   const header = req.headers.authorization || '';
   const token = header.startsWith('Bearer ') ? header.slice(7) : null;
   if (!token) return res.status(401).json({ error: 'login required' });
+  let p;
   try {
-    const p = jwt.verify(token, SECRET);
-    const user = await findUserById(p.id);
-    if (!user || user.role !== p.role) return res.status(401).json({ error: 'invalid token' });
-    req.user = { ...user, business_id: p.business_id || user.business_id };
-    return next();
+    p = jwt.verify(token, config.authSecret);
   } catch {
-    const user = parseToken(token);
-    if (!user) return res.status(401).json({ error: 'invalid token' });
-    req.user = user;
-    return next();
+    return res.status(401).json({ error: 'invalid token' });
   }
+  const user = await findUserById(p.id);
+  if (!user || user.role !== p.role) return res.status(401).json({ error: 'invalid token' });
+  req.user = { ...user, business_id: p.business_id || user.business_id };
+  return next();
 }
 
 export function requireOwner(req, res, next) {
@@ -35,16 +46,24 @@ export function requireOwner(req, res, next) {
 
 export async function loginHandler(req, res) {
   const { email, password } = req.body || {};
+  if (!email || !password) return res.status(401).json({ error: 'email and password required' });
   const user = await findUserByEmail(email);
-  if (!user) return res.status(401).json({ error: 'unknown email' });
-  if (user.password_hash) {
-    if (!password) return res.status(401).json({ error: 'password required' });
-    const ok = await bcrypt.compare(password, user.password_hash);
-    if (!ok) return res.status(401).json({ error: 'wrong password' });
-    return res.json({ token: signJwt(user), user: publicUser(user) });
-  }
-  const { makeToken } = await import('./store.js');
-  res.json({ token: makeToken(user), user: publicUser(user), demo: true });
+  // Same response for unknown email vs wrong password: no account enumeration.
+  // (Timing differs slightly; acceptable for this threat model.)
+  if (!user || !user.password_hash) return res.status(401).json({ error: 'invalid credentials' });
+  const ok = await bcrypt.compare(password, user.password_hash);
+  if (!ok) return res.status(401).json({ error: 'invalid credentials' });
+  return res.json(await sessionFor(user));
+}
+
+export async function meHandler(req, res) {
+  const business = await findBusinessById(req.user.business_id);
+  res.json({
+    user: publicUser(req.user),
+    business: business
+      ? { id: business.id, name: business.name, currency: business.currency, timezone: business.timezone }
+      : null,
+  });
 }
 
 export async function registerHandler(req, res) {
@@ -57,5 +76,5 @@ export async function registerHandler(req, res) {
   if (await findUserByEmail(email)) return res.status(409).json({ error: 'email taken' });
   const password_hash = await bcrypt.hash(password, 10);
   const user = await createUser({ business_id: req.user.business_id, name, email, role, password_hash });
-  res.status(201).json({ token: signJwt(user), user: publicUser(user) });
+  res.status(201).json(await sessionFor(user));
 }

@@ -1,56 +1,95 @@
-import { useCallback, useEffect, useState } from 'react';
+import { Suspense, lazy, useCallback, useState } from 'react';
+import { Navigate, Route, Routes, useNavigate } from 'react-router-dom';
+import AppShell from './components/AppShell.jsx';
 import Login from './pages/Login.jsx';
-import Setup from './pages/Setup.jsx';
-import Sales from './pages/Sales.jsx';
-import DailyClose from './pages/DailyClose.jsx';
-import Costs from './pages/Costs.jsx';
-import Recipes from './pages/Recipes.jsx';
-import Overheads from './pages/Overheads.jsx';
-import Reports from './pages/Reports.jsx';
-import OcrReview from './pages/OcrReview.jsx';
+import { Skeleton } from './components/ui.jsx';
+import { clearSession, loadSession } from './lib/api.js';
+import { setBusinessPrefs } from './lib/money.js';
 
-export default function App() {
-  const [session, setSession] = useState(null);
-  const [products, setProducts] = useState([]);
-  const [daily, setDaily] = useState(null);
+const Today = lazy(() => import('./pages/Today.jsx'));
+const Sell = lazy(() => import('./pages/Sell.jsx'));
+const Stock = lazy(() => import('./pages/Stock.jsx'));
+const Reports = lazy(() => import('./pages/Reports.jsx'));
+const More = lazy(() => import('./pages/More.jsx'));
+const Setup = lazy(() => import('./pages/Setup.jsx'));
+const Recipes = lazy(() => import('./pages/Recipes.jsx'));
+const Overheads = lazy(() => import('./pages/Overheads.jsx'));
+const Recurring = lazy(() => import('./pages/Recurring.jsx'));
+const OcrReview = lazy(() => import('./pages/OcrReview.jsx'));
 
-  const load = useCallback(async (token) => {
-    const h = { Authorization: `Bearer ${token}` };
-    const [pRes, dRes] = await Promise.all([
-      fetch('/api/products', { headers: h }),
-      fetch(`/api/reports/daily?sale_date=${new Date().toISOString().slice(0, 10)}`, { headers: h }),
-    ]);
-    if (pRes.ok) setProducts(await pRes.json());
-    if (dRes.ok) setDaily(await dRes.json());
-  }, []);
+function RequireAuth({ session, children }) {
+  if (!session) return <Navigate to="/login" replace />;
+  return children;
+}
 
-  useEffect(() => {
-    if (session) load(session.token);
-  }, [session, load]);
+function RequireOwner({ session, children }) {
+  if (!session) return <Navigate to="/login" replace />;
+  if (session.user.role !== 'owner') return <Navigate to="/" replace />;
+  return children;
+}
 
-  if (!session) {
-    return (
-      <div style={{ fontFamily: 'system-ui', maxWidth: 640, margin: '0 auto', padding: 16 }}>
-        <h1>Inventory Tracker</h1>
-        <Login onLogin={setSession} />
-      </div>
-    );
-  }
-
+function ShellRoutes({ session, onLogout, sessionExpired }) {
+  const navigate = useNavigate();
+  const logout = () => {
+    clearSession();
+    onLogout();
+    navigate('/login', { replace: true });
+  };
+  const expired = () => {
+    clearSession();
+    onLogout();
+    navigate('/login', { replace: true });
+  };
+  if (!session) return <Navigate to="/login" replace />;
+  const token = session.token;
   const isOwner = session.user.role === 'owner';
 
   return (
-    <div style={{ fontFamily: 'system-ui', maxWidth: 640, margin: '0 auto', padding: 16 }}>
-      <h1>Inventory Tracker</h1>
-      <p>Logged in as {session.user.email} ({session.user.role})</p>
-      <Setup token={session.token} isOwner={isOwner} onAdded={(p) => setProducts((prev) => [...prev, p])} />
-      <Costs token={session.token} isOwner={isOwner} />
-      <Recipes token={session.token} isOwner={isOwner} products={products} />
-      <Overheads token={session.token} isOwner={isOwner} onChanged={() => load(session.token)} />
-      <Reports token={session.token} isOwner={isOwner} />
-      <OcrReview token={session.token} />
-      <Sales token={session.token} products={products} onSold={() => load(session.token)} />
-      <DailyClose daily={daily} />
-    </div>
+    <Routes>
+      <Route element={<AppShell session={session} onLogout={logout} />}>
+        <Route index element={<RequireAuth session={session}><Today token={token} isOwner={isOwner} sessionExpired={expired} /></RequireAuth>} />
+        <Route path="sell" element={<RequireAuth session={session}><Sell token={token} sessionExpired={expired} /></RequireAuth>} />
+        <Route path="stock" element={<RequireOwner session={session}><Stock token={token} isOwner={isOwner} sessionExpired={sessionExpired} /></RequireOwner>} />
+        <Route path="stock/ocr/:id" element={<RequireOwner session={session}><OcrReview token={token} sessionExpired={expired} /></RequireOwner>} />
+        <Route path="reports" element={<RequireOwner session={session}><Reports token={token} isOwner={isOwner} sessionExpired={expired} /></RequireOwner>} />
+        <Route path="more" element={<RequireAuth session={session}><More session={session} onLogout={logout} /></RequireAuth>} />
+        <Route path="more/products" element={<RequireOwner session={session}><Setup token={token} isOwner={isOwner} onAdded={() => {}} sessionExpired={expired} /></RequireOwner>} />
+        <Route path="more/recipes" element={<RequireOwner session={session}><Recipes token={token} isOwner={isOwner} sessionExpired={expired} /></RequireOwner>} />
+        <Route path="more/overheads" element={<RequireOwner session={session}><Overheads token={token} isOwner={isOwner} onChanged={() => {}} sessionExpired={expired} /></RequireOwner>} />
+        <Route path="more/recurring" element={<RequireOwner session={session}><Recurring token={token} sessionExpired={expired} /></RequireOwner>} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Route>
+    </Routes>
+  );
+}
+
+export default function App() {
+  const [session, setSession] = useState(() => {
+    const s = loadSession();
+    if (s) setBusinessPrefs(s.business);
+    return s;
+  });
+
+  const handleLogin = useCallback((data) => {
+    setBusinessPrefs(data.business);
+    setSession(data);
+  }, []);
+
+  const handleLogout = useCallback(() => setSession(null), []);
+  const handleExpired = useCallback(() => {
+    clearSession();
+    setSession(null);
+  }, []);
+
+  return (
+    <Suspense fallback={<div className="main"><Skeleton /><Skeleton /></div>}>
+      <Routes>
+        <Route
+          path="/login"
+          element={session ? <Navigate to="/" replace /> : <Login onLogin={handleLogin} />}
+        />
+        <Route path="/*" element={<ShellRoutes session={session} onLogout={handleLogout} sessionExpired={handleExpired} />} />
+      </Routes>
+    </Suspense>
   );
 }

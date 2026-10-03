@@ -1,12 +1,63 @@
 // Repository: identical async API over memory store (dev/pilot) and Postgres (prod).
 // Routes must use this file — never touch store arrays or pg directly.
 import { randomUUID } from 'node:crypto';
+import bcrypt from 'bcryptjs';
+import config from '../config.js';
 import { store, audit as memAudit } from '../store.js';
 import { query, dbMode } from './pool.js';
 
 export const usePg = () => dbMode() === 'pg';
 
-// ---------- seed (pg only; fixed UUIDs — memory mode keeps demo string ids) ----------
+// ---------- businesses ----------
+export async function createBusiness({ name, currency, timezone }) {
+  const row = {
+    name,
+    currency: currency || config.defaultCurrency,
+    timezone: timezone || config.defaultTimezone,
+  };
+  if (!usePg()) {
+    const b = { id: `b-${randomUUID().slice(0, 8)}`, created_at: new Date().toISOString(), ...row };
+    store.businesses.push(b);
+    return b;
+  }
+  const r = await query(`INSERT INTO businesses (name, currency, timezone) VALUES ($1,$2,$3) RETURNING *`, [row.name, row.currency, row.timezone]);
+  return r.rows[0];
+}
+
+export async function findBusinessById(id) {
+  if (!usePg()) return store.businesses.find((b) => String(b.id) === String(id)) || null;
+  const r = await query(`SELECT * FROM businesses WHERE id=$1`, [id]);
+  return r.rows[0] || null;
+}
+
+export async function countUsers() {
+  if (!usePg()) return store.users.length;
+  const r = await query(`SELECT COUNT(*)::int AS n FROM users`);
+  return Number(r.rows[0].n);
+}
+
+// One-time bootstrap: on an empty database with BOOTSTRAP_* env set, create
+// the first business + owner (with a real password hash). Remove the
+// BOOTSTRAP_OWNER_PASSWORD variable after first login.
+export async function ensureBootstrap() {
+  if ((await countUsers()) > 0) return null;
+  const { businessName, ownerName, ownerEmail, ownerPassword } = config.bootstrap;
+  if (!businessName || !ownerName || !ownerEmail || !ownerPassword) {
+    console.log('No users exist and BOOTSTRAP_* is not fully set — skipping bootstrap. Set BOOTSTRAP_BUSINESS_NAME/_OWNER_NAME/_OWNER_EMAIL/_OWNER_PASSWORD to create the first owner.');
+    return null;
+  }
+  if (ownerPassword.length < 8) throw new Error('BOOTSTRAP_OWNER_PASSWORD must be 8+ chars.');
+  const business = await createBusiness({ name: businessName });
+  const password_hash = await bcrypt.hash(ownerPassword, 10);
+  const owner = await createUser({ business_id: business.id, name: ownerName, email: ownerEmail, role: 'owner', password_hash });
+  console.log(`Bootstrapped business "${business.name}" with owner ${owner.email}. Remove BOOTSTRAP_OWNER_PASSWORD from env now.`);
+  return { business, owner };
+}
+
+// ---------- demo seed (DEV/STAGING ONLY — gated by SEED_DEMO=true) ----------
+// This is the single intentional exception to the "no demo data in source"
+// rule: it only runs when explicitly enabled, and production refuses to boot
+// with SEED_DEMO=true (see src/config.js).
 export const PG_SEED = {
   business1: '11111111-1111-1111-1111-111111111111',
   business2: '22222222-2222-2222-2222-222222222222',
@@ -15,18 +66,44 @@ export const PG_SEED = {
   owner2: 'a0000000-0000-4000-8000-000000000003',
 };
 
-export async function ensureSeed() {
-  if (!usePg()) return;
-  await query(`INSERT INTO businesses (id, name, currency, timezone) VALUES ($1,'Demo Food Business','NGN','Africa/Lagos') ON CONFLICT (id) DO NOTHING`, [PG_SEED.business1]);
-  await query(`INSERT INTO businesses (id, name, currency, timezone) VALUES ($1,'Second Shop (isolation test)','NGN','Africa/Lagos') ON CONFLICT (id) DO NOTHING`, [PG_SEED.business2]);
-  const seedUsers = [
-    [PG_SEED.owner1, PG_SEED.business1, 'Owner', 'owner@demo.test', 'owner'],
-    [PG_SEED.staff1, PG_SEED.business1, 'Staff', 'staff@demo.test', 'staff'],
-    [PG_SEED.owner2, PG_SEED.business2, 'Owner 2', 'owner2@demo.test', 'owner'],
-  ];
-  for (const [id, biz, name, email, role] of seedUsers) {
-    await query(`INSERT INTO users (id, business_id, name, email, role) VALUES ($1,$2,$3,$4,$5) ON CONFLICT (id) DO NOTHING`, [id, biz, name, email, role]);
+const DEMO_BUSINESSES = [
+  { pgId: PG_SEED.business1, memId: 'seed-demo-business', name: 'Demo Food Business' },
+  { pgId: PG_SEED.business2, memId: 'seed-second-business', name: 'Second Shop (isolation test)' },
+];
+const DEMO_USERS = [
+  { pgId: PG_SEED.owner1, biz: 0, name: 'Owner', email: 'owner@demo.test', role: 'owner' },
+  { pgId: PG_SEED.staff1, biz: 0, name: 'Staff', email: 'staff@demo.test', role: 'staff' },
+  { pgId: PG_SEED.owner2, biz: 1, name: 'Owner 2', email: 'owner2@demo.test', role: 'owner' },
+];
+
+export async function seedDemo() {
+  if (!config.seedDemo) return;
+  const password_hash = await bcrypt.hash(config.seedDemoPassword, 10);
+  if (!usePg()) {
+    for (const b of DEMO_BUSINESSES) {
+      if (!store.businesses.find((x) => x.id === b.memId)) {
+        store.businesses.push({ id: b.memId, name: b.name, currency: config.defaultCurrency, timezone: config.defaultTimezone });
+      }
+    }
+    for (const u of DEMO_USERS) {
+      if (!store.users.find((x) => x.email === u.email)) {
+        store.users.push({ id: `seed-${u.email}`, business_id: DEMO_BUSINESSES[u.biz].memId, name: u.name, email: u.email, role: u.role, password_hash });
+      }
+    }
+    console.log('Demo seed ensured (memory mode).');
+    return;
   }
+  for (const b of DEMO_BUSINESSES) {
+    await query(`INSERT INTO businesses (id, name, currency, timezone) VALUES ($1,$2,$3,$4) ON CONFLICT (id) DO NOTHING`, [b.pgId, b.name, config.defaultCurrency, config.defaultTimezone]);
+  }
+  for (const u of DEMO_USERS) {
+    await query(
+      `INSERT INTO users (id, business_id, name, email, role, password_hash) VALUES ($1,$2,$3,$4,$5,$6)
+       ON CONFLICT (id) DO UPDATE SET password_hash=EXCLUDED.password_hash`,
+      [u.pgId, DEMO_BUSINESSES[u.biz].pgId, u.name, u.email, u.role, password_hash]
+    );
+  }
+  console.log('Demo seed ensured (pg mode).');
 }
 
 // ---------- users ----------
@@ -110,9 +187,9 @@ export async function createSale(s) {
     return sale;
   }
   const r = await query(
-    `INSERT INTO sales (business_id, product_id, sale_date, qty, price_minor, total_minor, material_cost_minor, profit_minor, receipt_photo_url, entered_by)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
-    [s.business_id, s.product_id, s.sale_date, s.qty, s.price_minor, s.total_minor, s.material_cost_minor || 0, s.profit_minor ?? (s.total_minor - (s.material_cost_minor || 0)), s.receipt_photo_url || null, s.entered_by || null]
+    `INSERT INTO sales (business_id, product_id, sale_date, qty, price_minor, total_minor, material_cost_minor, profit_minor, receipt_photo_url, receipt_key, entered_by)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+    [s.business_id, s.product_id, s.sale_date, s.qty, s.price_minor, s.total_minor, s.material_cost_minor || 0, s.profit_minor ?? (s.total_minor - (s.material_cost_minor || 0)), s.receipt_photo_url || null, s.receipt_key || null, s.entered_by || null]
   );
   return r.rows[0];
 }
@@ -406,6 +483,26 @@ export async function listAudit(business_id, limit = 100) {
   if (!usePg()) return store.auditLog.filter((a) => a.business_id === business_id).slice(-limit);
   const r = await query(`SELECT id, business_id, actor, action, target, before_json AS "before", after_json AS "after", reason, created_at FROM audit_log WHERE business_id=$1 ORDER BY created_at DESC LIMIT $2`, [business_id, limit]);
   return r.rows.reverse();
+}
+
+// ---------- receipts ledger (R2 object keys, never full URLs) ----------
+export async function createReceipt({ business_id, object_key, mime, size_bytes }) {
+  if (!usePg()) {
+    const r = { id: `rc-${randomUUID().slice(0, 8)}`, business_id, object_key, mime: mime || null, size_bytes: size_bytes ?? null, created_at: new Date().toISOString() };
+    store.receipts.push(r);
+    return r;
+  }
+  const r = await query(
+    `INSERT INTO receipts (business_id, object_key, mime, size_bytes) VALUES ($1,$2,$3,$4) RETURNING *`,
+    [business_id, object_key, mime || null, size_bytes ?? null]
+  );
+  return r.rows[0];
+}
+
+export async function findReceipt(id, business_id) {
+  if (!usePg()) return store.receipts.find((r) => String(r.id) === String(id) && r.business_id === business_id) || null;
+  const r = await query(`SELECT * FROM receipts WHERE id=$1 AND business_id=$2`, [id, business_id]);
+  return r.rows[0] || null;
 }
 
 // ---------- misc ----------

@@ -1,28 +1,89 @@
 # Runbook — Inventory Tracker
 
-## First boot (prod-like, local or VPS)
+Deploy targets: **backend on Render · frontend on Cloudflare Pages ·
+database on Neon (Postgres) · receipts on Cloudflare R2 (private bucket).**
 
-1. Copy env: `cp .env.example .env` and set strong `POSTGRES_PASSWORD` + `AUTH_SECRET`.
-2. Start: `docker compose up --build -d`
-3. Backend migrates + seeds on boot. Check: `curl localhost:4000/health` → `{"ok":true,"db":"pg",...}`
-4. Open `http://localhost:8080`, login `owner@demo.test` (no password until you register passwords via `/api/auth/register`).
-5. Create a real owner password: login as demo owner, then `POST /api/auth/register` with name/email/password/role.
+## First deploy (staging first, then production)
 
-## Pilot quickstart (demo data + smoke)
+Use a **separate Neon branch/project for staging** so tests never touch
+production data.
 
-- Smoke: `BASE=http://localhost:4000 ./scripts/smoke.sh` → prints `SMOKE PASS total_minor=...`
-- Demo seed (toast, iced coffee, burger, fries + buns/patties/potatoes, burger+fries recipes, freezer weekly + rent monthly, one sample sale): `BASE=http://localhost:4000 ./scripts/seed-demo.sh`
-- Both verified 2026-10-03 against memory-mode backend: seed daily close gross 596,000 / set-aside 196,774 / net 399,226 with correct freezer 100,000 + October rent 96,774 lines.
+1. **Neon:** create project ( + staging branch). Copy the **pooled**
+   connection string → `DATABASE_URL`, the **direct** string →
+   `DATABASE_URL_UNPOOLED`. Both with `?sslmode=require`.
+2. **R2:** create a **private** bucket + API token. Note account ID, key ID,
+   secret, bucket name → `R2_*` vars.
+3. **Render (backend Web Service):**
+   - Runtime: Docker with `backend/Dockerfile`, or native Node 22, root `backend`
+   - Build: `npm ci --omit=dev` · Start: `node src/index.js`
+   - Pre-deploy: `node src/db/migrate.js` (migrations run once per file via
+     `schema_migrations`; never in the start command)
+   - Health check path: `/health` (includes a DB ping; 503 = DB unreachable)
+   - Env: every variable in `backend/.env.example`
+   - First deploy only: set `BOOTSTRAP_BUSINESS_NAME/_OWNER_NAME/_OWNER_EMAIL/_OWNER_PASSWORD`.
+     The app creates the first business + owner when no users exist.
+     **Remove `BOOTSTRAP_OWNER_PASSWORD` right after first login.**
+4. **Cloudflare Pages (frontend):** framework Vite (React), root `frontend`,
+   build `npm run build`, output `dist`. Set `VITE_API_URL`
+   (e.g. `https://your-api.onrender.com`, no trailing slash) and
+   `NODE_VERSION=22`. `VITE_*` is baked in at build time and public — changing
+   it requires a redeploy. Never put secrets in `VITE_*`.
+5. **Verify:** `BASE=... EMAIL=... PASSWORD=... ./scripts/smoke.sh`
+   against staging first, then production. Deep-link refresh must not 404
+   (`public/_redirects` handles SPA routing).
+
+## Local dev (docker-compose)
+
+1. `cp .env.example .env`, fill in `POSTGRES_PASSWORD`, `AUTH_SECRET`
+   (`openssl rand -hex 32`), and `BOOTSTRAP_OWNER_*`.
+2. `docker compose up --build -d`
+3. `curl localhost:4000/health` → `{"ok":true,"db":"pg",...}`
+4. Open `http://localhost:8080`, log in as the bootstrap owner.
+5. Optional explicit demo data: `SEED_DEMO=true SEED_DEMO_PASSWORD=...`
+   (dev/staging only — production refuses to boot with it). Or API-seed via
+   `scripts/seed-demo.sh` (needs `BASE/EMAIL/PASSWORD`, no defaults).
 
 ## Daily ops
 
-- Health: `GET /health` (backend), frontend on :8080 proxies `/api` + `/uploads` to backend.
-- Backups: `./scripts/backup.sh` daily via cron (keeps 14 days in `./backups`). Uploads volume backed up separately if photos matter: `docker run --rm -v inventory-tracker_uploads:/u -v $(pwd)/backups:/b alpine tar czf /b/uploads-$(date +%F).tgz -C /u .`
-- Restore DB: `./scripts/restore.sh backups/pg-YYYY-MM-DD.sql.gz`
-- Logs: `docker compose logs -f backend db`
+- Health: `GET /health` (backend, includes DB ping). Frontend has no server —
+  it is static hosting plus `VITE_API_URL`.
+- Cold starts: Render free instances sleep (first request 30–60s) and Neon
+  suspends idle DBs (first query 1s+). The backend retries once; the frontend
+  API helper retries network failures with backoff. For daily business use,
+  prefer a paid Render instance.
+- Backups: `./scripts/backup.sh` daily via cron (keeps 14 days in `./backups`).
+  With `DATABASE_URL_UNPOOLED` set it backs up Neon directly; otherwise the
+  local compose db. Neon point-in-time restore is the primary safety net —
+  know your plan's retention.
+- Restore DB: `DATABASE_URL_UNPOOLED=... ./scripts/restore.sh backups/pg-YYYY-MM-DD.sql.gz`
+- Receipts: R2 bucket is private; the app mints 5-minute signed URLs via
+  `GET /api/receipts/:id/url` (business-scoped). No backup needed beyond R2.
+- Logs: stdout only. Never log `AUTH_SECRET`, passwords, or connection strings.
+- Migrations: add new changes as new `schema-mN.sql` files, never edit an
+  applied one. `schema-m1.sql` keeps its historical defaults; `schema-m6.sql`
+  neutralized business defaults for new rows.
+
+## Rotating AUTH_SECRET
+
+1. Generate: `openssl rand -hex 32`.
+2. Set the new value in Render, restart the backend.
+3. All sessions invalidate at once (JWTs are signed with it) — every user logs
+   in again. That is expected; announce it first.
+
+## Adding users
+
+Log in as owner, then `POST /api/auth/register` with
+`name/email/password (8+ chars)/role (owner|staff)`. There is no public
+signup; registration is owner-only. Every account has a password — no
+passwordless login exists.
 
 ## What is NOT here (by design)
 
 - No OCR provider, no billing, no multi-branch. M5 remains stub.
-- Uploads stay on the `uploads` volume (local disk). S3 move is future work — URLs are already abstract (`/uploads/...` refs), so the swap is contained in `receipts.js` + nginx.
-- Secrets live only in `.env` (gitignored). Never commit it.
+- No secrets in repo. `.env` and `.env.*` (except `*.example`) are gitignored.
+- `frontend/nginx.conf` + `frontend/Dockerfile` are **local-only**
+  (docker-compose). Production frontend is Cloudflare Pages.
+- The single intentional exception to "no demo data in source":
+  `backend/src/db/repo.js seedDemo()` runs only with `SEED_DEMO=true`
+  (dev/staging), and `schema-m1.sql` keeps frozen historical defaults that
+  `schema-m6.sql` neutralizes going forward.

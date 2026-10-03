@@ -1,33 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createApp } from '../src/app.js';
-import { resetStore } from '../src/store.js';
-
-function listen(app) {
-  return new Promise((resolve) => {
-    const server = app.listen(0, () => resolve(server));
-  });
-}
-
-async function api(base, path, opts = {}) {
-  const res = await fetch(`${base}${path}`, {
-    ...opts,
-    headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) },
-  });
-  const body = await res.json().catch(() => ({}));
-  return { status: res.status, body };
-}
+import { login, listen, api, seedUsers, authHeader } from './helpers.js';
 
 test('M5 stop: OCR stub never auto-posts + isolation + low-stock alert', async () => {
-  resetStore();
+  await seedUsers();
   const app = createApp();
   const server = await listen(app);
   const base = `http://localhost:${server.address().port}`;
   try {
-    const o1 = await api(base, '/api/auth/login', { method: 'POST', body: JSON.stringify({ email: 'owner@demo.test' }) });
-    const o2 = await api(base, '/api/auth/login', { method: 'POST', body: JSON.stringify({ email: 'owner2@demo.test' }) });
-    const H1 = { Authorization: `Bearer ${o1.body.token}` };
-    const H2 = { Authorization: `Bearer ${o2.body.token}` };
+    const o1 = await login(base, 'owner@test.local');
+    const o2 = await login(base, 'owner2@test.local');
+    const H1 = authHeader(o1.body.token);
+    const H2 = authHeader(o2.body.token);
 
     const p1 = await api(base, '/api/products', { method: 'POST', headers: H1, body: JSON.stringify({ name: 'Burger', price_minor: 100000 }) });
     const p2 = await api(base, '/api/products', { method: 'POST', headers: H1, body: JSON.stringify({ name: 'Toast', price_minor: 100000 }) });

@@ -1,35 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createApp } from '../src/app.js';
-import { resetStore } from '../src/store.js';
-
-function listen(app) {
-  return new Promise((resolve) => {
-    const server = app.listen(0, () => resolve(server));
-  });
-}
-
-async function api(base, path, opts = {}) {
-  const res = await fetch(`${base}${path}`, {
-    ...opts,
-    headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) },
-  });
-  const body = await res.json().catch(() => ({}));
-  return { status: res.status, body };
-}
+import { login, listen, api, seedUsers, authHeader } from './helpers.js';
 
 test('M1: owner setup + staff blocked + sales + daily total', async () => {
-  resetStore();
+  await seedUsers();
   const app = createApp();
   const server = await listen(app);
   const base = `http://localhost:${server.address().port}`;
   try {
-    const ownerLogin = await api(base, '/api/auth/login', { method: 'POST', body: JSON.stringify({ email: 'owner@demo.test' }) });
+    const ownerLogin = await login(base, 'owner@test.local');
     assert.equal(ownerLogin.status, 200);
-    const staffLogin = await api(base, '/api/auth/login', { method: 'POST', body: JSON.stringify({ email: 'staff@demo.test' }) });
+    const staffLogin = await login(base, 'staff@test.local');
     assert.equal(staffLogin.status, 200);
-    const ownerH = { Authorization: `Bearer ${ownerLogin.body.token}` };
-    const staffH = { Authorization: `Bearer ${staffLogin.body.token}` };
+    const ownerH = authHeader(ownerLogin.body.token);
+    const staffH = authHeader(staffLogin.body.token);
 
     const burger = await api(base, '/api/products', {
       method: 'POST', headers: ownerH,
@@ -73,13 +58,13 @@ test('M1: owner setup + staff blocked + sales + daily total', async () => {
 });
 
 test('M2: purchases + recipe + stock deduct + per-product profit + service no-recipe', async () => {
-  resetStore();
+  await seedUsers();
   const app = createApp();
   const server = await listen(app);
   const base = `http://localhost:${server.address().port}`;
   try {
-    const login = await api(base, '/api/auth/login', { method: 'POST', body: JSON.stringify({ email: 'owner@demo.test' }) });
-    const H = { Authorization: `Bearer ${login.body.token}` };
+    const ownerLogin = await login(base, 'owner@test.local');
+    const H = authHeader(ownerLogin.body.token);
 
     const bun = await api(base, '/api/ingredients', { method: 'POST', headers: H, body: JSON.stringify({ name: 'Bun', unit: 'piece' }) });
     const patty = await api(base, '/api/ingredients', { method: 'POST', headers: H, body: JSON.stringify({ name: 'Patty', unit: 'piece' }) });

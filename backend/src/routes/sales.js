@@ -21,7 +21,7 @@ async function costAndDeductPg(business_id, product_id, qty) {
 
 // Item sale: price copied from product at sale time (never rewritten later).
 router.post('/', async (req, res) => {
-  const { product_id, sale_date, qty, receipt_photo_url } = req.body || {};
+  const { product_id, sale_date, qty, receipt_photo_url, receipt_key } = req.body || {};
   if (!product_id || !sale_date || !qty) {
     return res.status(400).json({ error: 'product_id, sale_date, qty required' });
   }
@@ -39,6 +39,7 @@ router.post('/', async (req, res) => {
     material_cost_minor,
     profit_minor: qty * product.price_minor - material_cost_minor,
     receipt_photo_url: receipt_photo_url || null,
+    receipt_key: receipt_key || null,
     entered_by: req.user.id,
   });
   res.status(201).json(shortages.length ? { ...sale, shortage_warning: shortages } : sale);

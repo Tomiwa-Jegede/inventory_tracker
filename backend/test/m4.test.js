@@ -1,31 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createApp } from '../src/app.js';
-import { resetStore } from '../src/store.js';
-
-function listen(app) {
-  return new Promise((resolve) => {
-    const server = app.listen(0, () => resolve(server));
-  });
-}
-
-async function api(base, path, opts = {}) {
-  const res = await fetch(`${base}${path}`, {
-    ...opts,
-    headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) },
-  });
-  const body = await res.json().catch(() => ({}));
-  return { status: res.status, body };
-}
+import { login, listen, api, seedUsers, authHeader } from './helpers.js';
 
 test('M4: every-3-days projection + trends sum + edit with audit + reason-coded refund', async () => {
-  resetStore();
+  await seedUsers();
   const app = createApp();
   const server = await listen(app);
   const base = `http://localhost:${server.address().port}`;
   try {
-    const login = await api(base, '/api/auth/login', { method: 'POST', body: JSON.stringify({ email: 'owner@demo.test' }) });
-    const H = { Authorization: `Bearer ${login.body.token}` };
+    const ownerLogin = await login(base, 'owner@test.local');
+    const H = authHeader(ownerLogin.body.token);
 
     const charcoal = await api(base, '/api/recurring', {
       method: 'POST', headers: H,

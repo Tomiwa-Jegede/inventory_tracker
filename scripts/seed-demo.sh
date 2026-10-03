@@ -1,12 +1,14 @@
 #!/bin/sh
-# Seed demo food business: toast, iced coffee, burgers, fries + ingredients,
-# one purchase each, burger recipe, freezer (weekly) + rent (monthly).
-# Usage: BASE=http://localhost:4000 ./scripts/seed-demo.sh
+# Seed a sample food business via the API: products + ingredients, one
+# purchase each, recipes, overheads, one sample sale.
+# Usage: BASE=http://localhost:4000 EMAIL=owner@example.com PASSWORD=... ./scripts/seed-demo.sh
+# Requires an existing owner (bootstrap first). No defaults.
 set -eu
-BASE="${BASE:-http://localhost:4000}"
-EMAIL="${EMAIL:-owner@demo.test}"
+: "${BASE:?set BASE, e.g. BASE=http://localhost:4000}"
+: "${EMAIL:?set EMAIL of an existing owner}"
+: "${PASSWORD:?set PASSWORD for that owner}"
 
-TOKEN=$(curl -s -X POST "$BASE/api/auth/login" -H 'Content-Type: application/json' -d "{\"email\":\"$EMAIL\"}" | python3 -c "import sys,json; print(json.load(sys.stdin)['token'])")
+TOKEN=$(curl -s -X POST "$BASE/api/auth/login" -H 'Content-Type: application/json' -d "{\"email\":\"$EMAIL\",\"password\":\"$PASSWORD\"}" | python3 -c "import sys,json; print(json.load(sys.stdin)['token'])")
 echo "logged in as $EMAIL"
 api() { curl -s -X "$1" "$BASE$2" -H 'Content-Type: application/json' -H "Authorization: Bearer $TOKEN" -d "${3:-}"; }
 

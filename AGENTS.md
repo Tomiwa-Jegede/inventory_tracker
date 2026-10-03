@@ -87,13 +87,16 @@ Inventory-tracker — Flexible daily sales, expense, and profit tracking for any
 
 **Stack:** PERN — PostgreSQL, Express, React, Node.js
 
+**Deploy targets:** backend on Render · frontend on Cloudflare Pages · database on Neon (Postgres) · receipts on Cloudflare R2 (private bucket).
+
 **Repo layout:**
+- `README.md` — local setup + deployment summary (details in runbook)
 - `product-management/` — value to deliver, stakeholders, value map
-- `delivery-management/` — roadmap, milestone trackers (M1-M5), runbook
-- `backend/` — Express API on repo pattern (memory dev / Postgres prod) + Dockerfile
-- `frontend/` — React + Vite app + nginx Dockerfile (proxies /api + /uploads)
-- `docker-compose.yml` — db + backend + frontend + volumes
-- `scripts/` — backup.sh, restore.sh
+- `delivery-management/` — roadmap, milestone trackers (M1-M5), runbook (deploy truth)
+- `backend/` — Express API on repo pattern (memory dev/test, Postgres prod) + Dockerfile (app only; migrations are pre-deploy)
+- `frontend/` — React + Vite app (Cloudflare Pages; nginx Dockerfile is local-only)
+- `docker-compose.yml` — local dev only (db + backend + frontend)
+- `scripts/` — smoke.sh (BASE/EMAIL/PASSWORD, no defaults), seed-demo.sh, backup.sh, restore.sh
 
 ## Repository Layout Contract
 

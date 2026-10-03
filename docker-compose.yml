@@ -3,13 +3,13 @@ services:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-tracker}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
-      POSTGRES_DB: ${POSTGRES_DB:-inventory_tracker}
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB in .env}
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-tracker}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:?set POSTGRES_USER in .env}"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -22,13 +22,26 @@ services:
         condition: service_healthy
     environment:
       PORT: 4000
-      DATABASE_URL: postgres://${POSTGRES_USER:-tracker}:${POSTGRES_PASSWORD:-change-me}@db:5432/${POSTGRES_DB:-inventory_tracker}
-      AUTH_SECRET: ${AUTH_SECRET:-change-me-to-a-long-random-string}
-    volumes:
-      - uploads:/app/uploads
+      DATABASE_URL: postgres://${POSTGRES_USER:?set POSTGRES_USER in .env}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:?set POSTGRES_DB in .env}
+      DATABASE_URL_UNPOOLED: postgres://${POSTGRES_USER:?set POSTGRES_USER in .env}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:?set POSTGRES_DB in .env}
+      AUTH_SECRET: ${AUTH_SECRET:?set AUTH_SECRET in .env (openssl rand -hex 32)}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8080}
+      DEFAULT_CURRENCY: ${DEFAULT_CURRENCY:-USD}
+      DEFAULT_TIMEZONE: ${DEFAULT_TIMEZONE:-UTC}
+      BOOTSTRAP_BUSINESS_NAME: ${BOOTSTRAP_BUSINESS_NAME:-}
+      BOOTSTRAP_OWNER_NAME: ${BOOTSTRAP_OWNER_NAME:-}
+      BOOTSTRAP_OWNER_EMAIL: ${BOOTSTRAP_OWNER_EMAIL:-}
+      BOOTSTRAP_OWNER_PASSWORD: ${BOOTSTRAP_OWNER_PASSWORD:-}
+      SEED_DEMO: ${SEED_DEMO:-false}
+      SEED_DEMO_PASSWORD: ${SEED_DEMO_PASSWORD:-}
+      ALLOW_DEMO_LOGIN: ${ALLOW_DEMO_LOGIN:-false}
+      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-5}
     ports:
       - "4000:4000"
 
+  # Local-only frontend (nginx proxy). Production serves the frontend from
+  # Cloudflare Pages — see frontend/AGENTS.md.
   frontend:
     build: ./frontend
     restart: unless-stopped
@@ -39,4 +52,3 @@ services:
 
 volumes:
   pgdata:
-  uploads:
