@@ -54,8 +54,12 @@ export function validateConfig(env = process.env) {
   }
 
   const r2Configured = Boolean(env.R2_ACCOUNT_ID && env.R2_ACCESS_KEY_ID && env.R2_SECRET_ACCESS_KEY && env.R2_BUCKET);
-  if (isProd && !r2Configured) {
-    errors.push('R2 storage is required in production (R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET). Render disks are ephemeral.');
+  if (!r2Configured) {
+    // Delete-on-entry policy (owner decision 2026-10-03): receipt photos are
+    // a temporary transcription aid, deleted on sale save, nothing retained.
+    // So R2 is optional; without it uploads ride ephemeral local disk, which
+    // is acceptable for a file that lives minutes. Warn loudly in prod.
+    console.warn('R2 storage is not configured — receipt uploads use ephemeral local disk. Fine under delete-on-entry; do not retain photos there.');
   }
 
   if (errors.length) {

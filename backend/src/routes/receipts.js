@@ -2,8 +2,8 @@ import { Router } from 'express';
 import multer from 'multer';
 import config from '../config.js';
 import { requireAuth } from '../auth.js';
-import { putReceipt, signedReceiptUrl, storageMode } from '../storage.js';
-import { createReceipt, findReceipt } from '../db/repo.js';
+import { deleteReceiptObject, putReceipt, signedReceiptUrl, storageMode } from '../storage.js';
+import { createReceipt, deleteReceipt, findReceipt, logAudit } from '../db/repo.js';
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -49,6 +49,21 @@ router.get('/url', async (req, res) => {
   }
   const filename = key.split('/').pop();
   return res.json({ url: `/uploads/${req.user.business_id}/${filename}`, expiresIn: null });
+});
+
+// Discard a transcription aid without attaching it to a sale
+// (staff snapped the wrong receipt, numbers entered from paper instead).
+router.delete('/:id', async (req, res) => {
+  const rc = await findReceipt(req.params.id, req.user.business_id);
+  if (!rc) return res.status(404).json({ error: 'receipt not found' });
+  try {
+    await deleteReceiptObject(rc.object_key);
+  } catch (e) {
+    console.error('receipt object delete failed:', e.message);
+  }
+  await deleteReceipt(req.params.id, req.user.business_id);
+  await logAudit({ business_id: req.user.business_id, actor: req.user.id, action: 'receipt.discarded', target: req.params.id, before: { object_key: rc.object_key }, after: null, reason: 'discarded without sale' });
+  res.json({ ok: true, discarded: req.params.id });
 });
 
 // Authenticated, business-scoped, short-lived view URL. Bucket stays private.

@@ -97,6 +97,7 @@ Inventory-tracker — Flexible daily sales, expense, and profit tracking for any
 - `frontend/` — React + Vite app (Cloudflare Pages; nginx Dockerfile is local-only)
 - `docker-compose.yml` — local dev only (db + backend + frontend)
 - `scripts/` — smoke.sh (BASE/EMAIL/PASSWORD, no defaults), seed-demo.sh, backup.sh, restore.sh
+- `neon.ts` + `.neon/` — Neon project link (`steep-hall-17249643`, branch `production`); `neon deploy` syncs branch policy and pulls `DATABASE_URL*` into gitignored `.env`
 
 ## Repository Layout Contract
 

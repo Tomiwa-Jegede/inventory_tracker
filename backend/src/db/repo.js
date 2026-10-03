@@ -243,11 +243,24 @@ export async function createDayTotal({ business_id, sale_date, total_minor, note
 
 export async function listDayTotals(business_id, sale_date) {
   if (!usePg()) {
-    return store.dayTotals.filter((t) => t.business_id === business_id && (!sale_date || t.sale_date === sale_date));
+    return store.dayTotals.filter((t) => t.business_id === business_id && (!sale_date || t.sale_date === sale_date)).map((t) => ({ superseded: false, ...t }));
   }
   const r = sale_date
-    ? await query(`SELECT * FROM day_totals WHERE business_id=$1 AND sale_date=$2`, [business_id, sale_date])
-    : await query(`SELECT * FROM day_totals WHERE business_id=$1`, [business_id]);
+    ? await query(`SELECT *, COALESCE(superseded, false) AS superseded FROM day_totals WHERE business_id=$1 AND sale_date=$2`, [business_id, sale_date])
+    : await query(`SELECT *, COALESCE(superseded, false) AS superseded FROM day_totals WHERE business_id=$1`, [business_id]);
+  return r.rows;
+}
+
+// Replace rule (owner decision 2026-10-03): morning-after breakdown supersedes
+// the quick total. Marks all active quick totals for the date superseded and
+// returns them; closes exclude superseded rows but still list them.
+export async function supersedeDayTotals(business_id, sale_date) {
+  if (!usePg()) {
+    const rows = store.dayTotals.filter((t) => t.business_id === business_id && t.sale_date === sale_date && !t.superseded);
+    for (const t of rows) t.superseded = true;
+    return rows;
+  }
+  const r = await query(`UPDATE day_totals SET superseded=true WHERE business_id=$1 AND sale_date=$2 AND COALESCE(superseded, false)=false RETURNING *`, [business_id, sale_date]);
   return r.rows;
 }
 
@@ -514,6 +527,18 @@ export async function createReceipt({ business_id, object_key, mime, size_bytes 
 export async function findReceipt(id, business_id) {
   if (!usePg()) return store.receipts.find((r) => String(r.id) === String(id) && r.business_id === business_id) || null;
   const r = await query(`SELECT * FROM receipts WHERE id=$1 AND business_id=$2`, [id, business_id]);
+  return r.rows[0] || null;
+}
+
+// Delete-on-entry: remove the ledger row after its object is deleted.
+// Returns the deleted row (with object_key) or null if already gone.
+export async function deleteReceipt(id, business_id) {
+  if (!usePg()) {
+    const idx = store.receipts.findIndex((r) => String(r.id) === String(id) && r.business_id === business_id);
+    if (idx < 0) return null;
+    return store.receipts.splice(idx, 1)[0];
+  }
+  const r = await query(`DELETE FROM receipts WHERE id=$1 AND business_id=$2 RETURNING *`, [id, business_id]);
   return r.rows[0] || null;
 }
 

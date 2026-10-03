@@ -2,7 +2,7 @@
 
 > Canonical value artifact for Inventory-tracker. Tracks what value is delivered, to whom, and how it is proven — separately from how engineering delivers it (`delivery-management/`).
 
-Agreed basics from owner Q&A: single currency for MVP (multi later), English only, mobile web + desktop, owner + staff roles, manual sales first with receipt photo backup (auto-read later), custom units per item, daily/weekly/monthly/custom overhead, edits allowed with history, daily summary + weekly/monthly trends in MVP. Business-first build, SaaS for others later.
+Agreed basics from owner Q&A: single currency for MVP (multi later), English only, mobile web + desktop, owner + staff roles, manual sales first with transient receipt photo deleted on entry (auto-read later), custom units per item, daily/weekly/monthly/custom overhead, edits allowed with history, daily summary + weekly/monthly trends in MVP. Business-first build, SaaS for others later.
 
 ## How to read this map
 
@@ -16,7 +16,7 @@ Agreed basics from owner Q&A: single currency for MVP (multi later), English onl
 | Outcome ID | Stakeholder | Value to deliver | Visible moment | Proof measure | Status | Owning delivery | Must-not-fail promise |
 |---|---|---|---|---|---|---|---|
 | V1 | Owner | Set up my own business: products/services, prices, categories, no hardcoding | Owner creates toast, iced coffee, burger, fries, chicken sandwich with own prices and sees them in sales screen | Can add/edit/archive a product in under 2 min; sales screen reflects it | GAP | M1 | No product, category, or expense type is hardcoded |
-| V2 | Owner + Staff | Enter daily sales fast, even when busy: manual totals + receipt photo backup | Staff types day's sales money, adds product breakdown when known, attaches receipt photo | Daily sales saved in under 1 min; photo stored with entry | GAP | M1 | Busy-hour entry never blocked by missing receipt |
+| V2 | Owner + Staff | Enter daily sales fast, even when busy: manual totals + transient receipt photo | Staff types day's sales money, adds product breakdown when known, snaps receipt as a temporary aid | Daily sales saved in under 1 min; no receipt images retained after entry | GAP | M1 | Busy-hour entry never blocked by missing receipt |
 | V3 | Owner | Know true ingredient/material costs: purchases with item, qty, price, date, supplier, custom unit, auto cost-per-unit | Owner enters flour/oil purchase and sees cost per unit; stock left updates | 3 test purchases show correct cost-per-unit math | GAP | M2 | Cost math is explainable per unit |
 | V4 | Owner | Link products to ingredients so product cost is automatic | Burger linked to bun, patty, oil; selling 5 burgers reduces stock and shows cost | Sell 1 burger deducts correct recipe qty; product cost shown | GAP | M2 | No silent wrong costs when recipe or price changes |
 | V5 | Owner | See profit per product | Owner views today: burgers made X, iced coffee made Y | Per-product sales minus product cost matches manual check | GAP | M2 | Per-product numbers add up to gross profit |
@@ -28,7 +28,7 @@ Agreed basics from owner Q&A: single currency for MVP (multi later), English onl
 
 ## Cross-cutting value gaps
 
-1. **Receipt auto-read** — manual + photo is enough for MVP; OCR comes after trust in manual numbers. Owned by M5.
+1. **Receipt auto-read** — manual + transient photo (deleted on entry) is enough for MVP; OCR comes after trust in manual numbers. Owned by M5.
 2. **Multi-business / SaaS** — MVP serves one business; architecture must not block second business later. Owned by M5.
 3. **Multi-currency, multi-language, offline** — deliberately deferred; single currency + English + online-first for MVP. Owned by Unassigned.
 
@@ -41,7 +41,7 @@ Agreed basics from owner Q&A: single currency for MVP (multi later), English onl
 
 ## Deliberately not promised
 
-- Receipt OCR in MVP (photo backup only)
+- Receipt OCR in MVP (transient photos only, deleted on entry)
 - Multi-currency, multi-language in MVP
 - Offline-first in MVP (online-first, usable on phone browser)
 - Multi-branch/multi-location in MVP

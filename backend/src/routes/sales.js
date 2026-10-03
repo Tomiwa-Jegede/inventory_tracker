@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { requireAuth } from '../auth.js';
-import { changeStock, createDayTotal, createSale, findProduct, latestCostPerUnit, listDayTotals, listRecipes, listSales } from '../db/repo.js';
+import { deleteReceiptObject } from '../storage.js';
+import { changeStock, createDayTotal, createSale, deleteReceipt, findProduct, findReceipt, latestCostPerUnit, listDayTotals, listRecipes, listSales, logAudit, supersedeDayTotals } from '../db/repo.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -20,8 +21,11 @@ async function costAndDeductPg(business_id, product_id, qty) {
 }
 
 // Item sale: price copied from product at sale time (never rewritten later).
+// Delete-on-entry: pass receipt_id and the transcribed photo is deleted right
+// after the sale saves — nothing retained. receipt_key/photo_url are forced
+// null on that path so no dangling refs survive.
 router.post('/', async (req, res) => {
-  const { product_id, sale_date, qty, receipt_photo_url, receipt_key } = req.body || {};
+  const { product_id, sale_date, qty, receipt_photo_url, receipt_key, receipt_id } = req.body || {};
   if (!product_id || !sale_date || !qty) {
     return res.status(400).json({ error: 'product_id, sale_date, qty required' });
   }
@@ -38,11 +42,35 @@ router.post('/', async (req, res) => {
     total_minor: qty * product.price_minor,
     material_cost_minor,
     profit_minor: qty * product.price_minor - material_cost_minor,
-    receipt_photo_url: receipt_photo_url || null,
-    receipt_key: receipt_key || null,
+    receipt_photo_url: receipt_id ? null : (receipt_photo_url || null),
+    receipt_key: receipt_id ? null : (receipt_key || null),
     entered_by: req.user.id,
   });
-  res.status(201).json(shortages.length ? { ...sale, shortage_warning: shortages } : sale);
+  let receipt_consumed = null;
+  if (receipt_id) {
+    const rc = await findReceipt(receipt_id, req.user.business_id);
+    if (rc) {
+      try {
+        await deleteReceiptObject(rc.object_key);
+      } catch (e) {
+        console.error('receipt object delete failed:', e.message);
+      }
+      await deleteReceipt(receipt_id, req.user.business_id);
+      await logAudit({ business_id: req.user.business_id, actor: req.user.id, action: 'receipt.consumed', target: receipt_id, before: { object_key: rc.object_key }, after: null, reason: 'delete-on-entry' });
+      receipt_consumed = receipt_id;
+    }
+  }
+  const out = { ...sale };
+  if (shortages.length) out.shortage_warning = shortages;
+  if (receipt_consumed) out.receipt_consumed = receipt_consumed;
+  // Replace rule: backfill supersedes the day's quick totals so the close
+  // shows one truthful number. Superseded rows stay visible in history.
+  const superseded = await supersedeDayTotals(req.user.business_id, sale_date);
+  if (superseded.length) {
+    await logAudit({ business_id: req.user.business_id, actor: req.user.id, action: 'day_total.superseded', target: sale.id, before: superseded.map((t) => ({ id: t.id, total_minor: t.total_minor })), after: null, reason: 'backfill replaces quick total' });
+    out.superseded_quick_totals = superseded.map((t) => ({ id: t.id, total_minor: Number(t.total_minor) }));
+  }
+  res.status(201).json(out);
 });
 
 // Quick total for busy hours (no breakdown).

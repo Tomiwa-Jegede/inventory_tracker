@@ -92,6 +92,11 @@ export default function Today({ token, isOwner, sessionExpired }) {
                 <ListRow key={s.id} title={`${s.qty} × ${s.product_id}`} subtitle={s.sale_date} trailing={<Money minor={s.total_minor} />} />
               ))}
               {daily.hasQuickTotal && <p className="stat-label">Includes quick total entered during busy hours.</p>}
+              {(daily.supersededTotals || []).length > 0 && (
+                <p className="stat-label">Quick total replaced by breakdown — one truthful number kept.{' '}
+                  {(daily.supersededTotals || []).map((t) => <span key={t.id}>Replaced: <Money minor={t.total_minor} />. </span>)}
+                </p>
+              )}
             </Card>
           )}
           <div className="sticky-cta"><Link className="btn btn-primary btn-block" to="/sell">＋ Log a sale</Link></div>

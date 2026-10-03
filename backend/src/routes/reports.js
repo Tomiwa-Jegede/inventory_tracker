@@ -8,7 +8,9 @@ router.use(requireAuth);
 
 async function dailyClose(business_id, sale_date) {
   const sales = await listSales(business_id, sale_date);
-  const dayTotals = await listDayTotals(business_id, sale_date);
+  const allDayTotals = await listDayTotals(business_id, sale_date);
+  const dayTotals = allDayTotals.filter((t) => !t.superseded);
+  const supersededTotals = allDayTotals.filter((t) => t.superseded);
   const itemsTotal = sales.reduce((sum, s) => sum + Number(s.total_minor), 0);
   const quickTotal = dayTotals.reduce((sum, t) => sum + Number(t.total_minor), 0);
   const materialTotal = sales.reduce((sum, s) => sum + Number(s.material_cost_minor || 0), 0);
@@ -44,6 +46,7 @@ async function dailyClose(business_id, sale_date) {
     count: sales.length,
     breakdown: Object.values(byProduct),
     hasQuickTotal: dayTotals.length > 0,
+    supersededTotals: supersededTotals.map((t) => ({ id: t.id, total_minor: Number(t.total_minor) })),
   };
 }
 
@@ -67,7 +70,7 @@ router.get('/trends', async (req, res) => {
   const days = [];
   for (let d = from; d <= to; d = addDay(d)) {
     const sales = await listSales(req.user.business_id, d);
-    const qts = await listDayTotals(req.user.business_id, d);
+    const qts = (await listDayTotals(req.user.business_id, d)).filter((t) => !t.superseded);
     if (!sales.length && !qts.length) {
       days.push({ sale_date: d, status: 'missing', total_minor: 0, gross_minor: 0, net_minor: 0 });
       continue;

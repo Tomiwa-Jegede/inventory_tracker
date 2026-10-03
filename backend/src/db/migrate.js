@@ -7,7 +7,7 @@ import config from '../config.js';
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
 // New changes ship as NEW numbered files — never edit an applied one.
-const files = ['schema-m1.sql', 'schema-m2.sql', 'schema-m3.sql', 'schema-m4.sql', 'schema-m5.sql', 'schema-m6.sql', 'schema-m7.sql'];
+const files = ['schema-m1.sql', 'schema-m2.sql', 'schema-m3.sql', 'schema-m4.sql', 'schema-m5.sql', 'schema-m6.sql', 'schema-m7.sql', 'schema-m8.sql'];
 
 const connectionString = config.databaseUrlUnpooled;
 if (!connectionString) {

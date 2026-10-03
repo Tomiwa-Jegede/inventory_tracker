@@ -9,7 +9,7 @@ Owner sets up their own products and staff can record a day's sales in under a m
 - Business setup: products/services, selling prices, categories, single currency, active/archived state
 - Simple login + 2 roles: owner (everything) and staff (enter sales, view today; cannot edit prices or setup)
 - Daily sales entry: manual total + per-product breakdown (qty sold), date defaults to today
-- Receipt photo upload attached to a sales entry (backup only, no auto-read in MVP)
+- Receipt photo as a temporary transcription aid: snap now, enter the numbers, photo deleted on sale save (no retention, no auto-read in MVP)
 - Basic daily summary: total sales today
 - Mobile-friendly sales screen + desktop setup screens
 
@@ -25,15 +25,15 @@ State what this milestone deliberately does not do.
 ## Ownership Boundaries
 
 - frontend — setup forms, fast sales entry, photo upload, daily total display
-- backend — products, sales entries, receipt photo storage refs, role checks, single-currency money as integers (kobo)
-- database — businesses, users, products, sales, receipt attachments
+- backend — products, sales entries, receipt photo intake + delete-on-save (nothing retained), role checks, single-currency money as integers (kobo)
+- database — businesses, users, products, sales (no receipt blobs or refs retained)
 
 ## Execution Order
 
 Sequence by dependency.
 
 1. Data shape + auth/roles + business/product setup
-2. Manual sales entry + receipt photo attach
+2. Manual sales entry + receipt photo attach (deleted on save)
 3. Daily total + mobile usability pass
 
 ## Value Outcome

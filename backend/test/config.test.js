@@ -14,10 +14,10 @@ test('Config: production refuses to start without AUTH_SECRET or DATABASE_URL', 
   assert.throws(() => validateConfig({ NODE_ENV: 'production', AUTH_SECRET: 'short', DATABASE_URL: 'postgres://x' }), /32\+ chars/);
 });
 
-test('Config: production requires CORS_ORIGINS and R2, refuses demo flags', () => {
+test('Config: production requires CORS_ORIGINS, warns (not throws) without R2, refuses demo flags', () => {
   const prod = { NODE_ENV: 'production', AUTH_SECRET: SECRET, DATABASE_URL: 'postgres://x' };
   assert.throws(() => validateConfig(prod), /CORS_ORIGINS/);
-  assert.throws(() => validateConfig({ ...prod, CORS_ORIGINS: 'https://a.pages.dev' }), /R2/);
+  assert.doesNotThrow(() => validateConfig({ ...prod, CORS_ORIGINS: 'https://a.pages.dev' }));
   const full = { ...prod, CORS_ORIGINS: 'https://a.pages.dev', R2_ACCOUNT_ID: 'a', R2_ACCESS_KEY_ID: 'b', R2_SECRET_ACCESS_KEY: 'c', R2_BUCKET: 'd' };
   assert.doesNotThrow(() => validateConfig(full));
   assert.throws(() => validateConfig({ ...full, ALLOW_DEMO_LOGIN: 'true' }), /ALLOW_DEMO_LOGIN/);

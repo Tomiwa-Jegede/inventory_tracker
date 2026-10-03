@@ -1,7 +1,7 @@
 # Runbook — Inventory Tracker
 
 Deploy targets: **backend on Render · frontend on Cloudflare Pages ·
-database on Neon (Postgres) · receipts on Cloudflare R2 (private bucket).**
+database on Neon (Postgres) · receipt photos are transient (deleted on entry, nothing retained).**
 
 ## First deploy (staging first, then production)
 
@@ -60,7 +60,7 @@ production data.
   know your plan's retention.
 - Restore DB: `DATABASE_URL_UNPOOLED=... ./scripts/restore.sh backups/pg-YYYY-MM-DD.sql.gz`
 - Receipts: R2 bucket is private; the app mints 5-minute signed URLs via
-  `GET /api/receipts/:id/url` (business-scoped). No backup needed beyond R2.
+  `GET /api/receipts/:id/url` (business-scoped). POLICY CHANGE 2026-10-03: delete-on-entry — photos are a temporary transcription aid, deleted on sale save, nothing retained. R2 subscription ON HOLD, do not subscribe.
 - Logs: stdout only. Never log `AUTH_SECRET`, passwords, or connection strings.
 - Migrations: add new changes as new `schema-mN.sql` files, never edit an
   applied one. `schema-m1.sql` keeps its historical defaults; `schema-m6.sql`

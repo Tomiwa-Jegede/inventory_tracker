@@ -7,7 +7,7 @@
     "dev": "node --watch src/index.js",
     "start": "node src/index.js",
     "migrate": "node src/db/migrate.js",
-    "test": "NODE_ENV=test AUTH_SECRET=test-secret-0123456789abcdef-test!! node --test test/config.test.js test/m1.test.js test/m3.test.js test/m4.test.js test/m5.test.js test/auth.test.js test/receipts.test.js test/options.test.js"
+    "test": "NODE_ENV=test AUTH_SECRET=test-secret-0123456789abcdef-test!! node --test test/config.test.js test/m1.test.js test/m3.test.js test/m4.test.js test/m5.test.js test/auth.test.js test/receipts.test.js test/options.test.js test/replace.test.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1146.0",

@@ -1,11 +1,12 @@
 // Receipt storage: R2 (S3-compatible) when configured, local disk otherwise.
-// Local disk is a dev-only fallback — production refuses to boot without R2
-// (see src/config.js) because Render's filesystem is ephemeral.
+// Delete-on-entry policy (owner decision 2026-10-03): receipt photos are a
+// temporary transcription aid, deleted on sale save — nothing is retained.
+// So R2 is optional; local disk is acceptable for a file that lives minutes.
 // The database stores the OBJECT KEY, never a full URL.
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import config from './config.js';
 
@@ -81,6 +82,28 @@ export async function putReceipt({ businessId, buffer, mime }) {
   const filename = key.split('/').pop();
   fs.writeFileSync(path.join(dir, filename), buffer);
   return { key, mime, size: buffer.length, localPath: `/uploads/${businessId}/${filename}` };
+}
+
+// Delete-on-entry: remove the stored object after its sale is saved.
+// Missing files are fine (already consumed or never persisted) — resolve true.
+export async function deleteReceiptObject(key) {
+  if (!key) return true;
+  if (storageMode() === 'r2') {
+    await s3Client().send(new DeleteObjectCommand({ Bucket: r2.bucket, Key: key }));
+    return true;
+  }
+  const filename = String(key).split('/').pop();
+  let roots = [];
+  try {
+    roots = fs.readdirSync('uploads', { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name);
+  } catch { /* no uploads dir — nothing to delete */ }
+  for (const biz of roots) {
+    const p = path.join('uploads', biz, filename);
+    try {
+      if (fs.existsSync(p)) fs.unlinkSync(p);
+    } catch { /* already gone — fine */ }
+  }
+  return true;
 }
 
 // Short-lived signed URL. Bucket stays private; only users of the same

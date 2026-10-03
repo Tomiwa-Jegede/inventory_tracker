@@ -10,13 +10,13 @@ Owned by root `AGENTS.md`. Serves `delivery-management/` milestones M1–M5.
 - Money in integers (minor units, e.g. kobo) end to end; never floats.
 - Prices copied at sale time; price changes apply forward only.
 - Every money edit requires reason + audit log entry. Sale-edit reasons come from the `edit_reason` lookup options (API-enforced); `Other` requires a note stored on the audit entry.
-- Env: `src/config.js` is the ONLY file that reads `process.env` (frozen, validated once). It throws on missing/short `AUTH_SECRET`, missing `DATABASE_URL` in production, open CORS in production, `ALLOW_DEMO_LOGIN=true` or `SEED_DEMO=true` in production, and missing R2 in production. No other file reads env directly. Dropdown seeds (`DEFAULT_UNITS`, `DEFAULT_EDIT_REASONS`) are env-owned with documented fallbacks; owners manage values per-business via options.
+- Env: `src/config.js` is the ONLY file that reads `process.env` (frozen, validated once). It throws on missing/short `AUTH_SECRET`, missing `DATABASE_URL` in production, open CORS in production, `ALLOW_DEMO_LOGIN=true` or `SEED_DEMO=true` in production. Missing R2 only warns (delete-on-entry: photos live minutes, nothing retained). No other file reads env directly. Dropdown seeds (`DEFAULT_UNITS`, `DEFAULT_EDIT_REASONS`) are env-owned with documented fallbacks; owners manage values per-business via options.
 - Memory mode is dev/test only; the server refuses to boot into it when `NODE_ENV=production`.
 - Routes use `src/db/repo.js` only — never `store.js` arrays or `pg` directly. `repo.js` exposes one async API with memory (dev/test) and Postgres (prod) implementations switched by `DATABASE_URL`.
-- `src/db/schema-m1.sql` through `schema-m7.sql` are Postgres truth; `npm run migrate` (Render pre-deploy, unpooled URL) applies each once via `schema_migrations`. New changes ship as NEW numbered files — never edit an applied one. `migrate.js` never seeds; the app never migrates on boot. m7 adds `lookup_options` + backfill + `audit_log.note`.
+- `src/db/schema-m1.sql` through `schema-m8.sql` are Postgres truth; `npm run migrate` (Render pre-deploy, unpooled URL) applies each once via `schema_migrations`. New changes ship as NEW numbered files — never edit an applied one. `migrate.js` never seeds; the app never migrates on boot. m7 adds `lookup_options` + backfill + `audit_log.note`. m8 adds the `receipts` ledger + `sales.receipt_key`.
 - Auth: JWT only (`AUTH_SECRET`, 32+ chars). Every account has a `password_hash`; no passwordless path, no token fallback. `POST /api/auth/register` is owner-only. Login is rate-limited; login/me responses carry the business record (currency/timezone source of truth).
 - First owner comes from `BOOTSTRAP_*` env via `ensureBootstrap()` (empty DB only). Demo seed runs only with `SEED_DEMO=true` (+ `SEED_DEMO_PASSWORD`), dev/staging only.
-- Receipts: R2 when configured (object key in DB, never a URL), local disk dev-only. Bucket stays private; viewing goes through `GET /api/receipts/:id/url` (business-scoped, 5-min signed URL). Upload content-sniffed (jpeg/png/gif/webp), size from `MAX_UPLOAD_MB`.
+- Receipts: transient transcription aids, delete-on-entry (owner decision 2026-10-03). Upload returns a receipt id; passing `receipt_id` on sale save consumes it (object + row deleted, audited as `receipt.consumed`, sale keeps no ref). `DELETE /api/receipts/:id` discards without a sale. R2 optional (warns when absent); local disk is acceptable for a file that lives minutes. Bucket stays private when used; viewing goes through `GET /api/receipts/:id/url` (business-scoped, 5-min signed URL). Upload content-sniffed (jpeg/png/gif/webp), size from `MAX_UPLOAD_MB`.
 - HTTP: `trust proxy`, restricted CORS from `CORS_ORIGINS`, security headers, `/health` includes a DB ping (503 when unreachable), graceful SIGTERM shutdown, stdout logs with no secrets.
 - Roles enforced in backend: staff cannot edit products/prices/overheads. Staff can read lookup options but POST/PATCH returns 403.
 - Pickers, not typing: `lookup_options` (category/unit/supplier/overhead_name/expense_name/edit_reason) drives dropdowns; creates auto-learn values, renames propagate to TEXT columns transactionally, TEXT columns stay the source of record.
@@ -45,9 +45,9 @@ Owned by root `AGENTS.md`. Serves `delivery-management/` milestones M1–M5.
 - `src/m3.js` — calendar-aware set-aside, history-forward-only rules
 - `src/routes/auth.js` — POST /api/auth/login + GET /api/auth/me
 - `src/routes/products.js` — GET/POST/PATCH, owner-only writes
-- `src/routes/sales.js` — POST item sale (price+cost frozen, receipt_key) + POST day-total + GET list
-- `src/routes/receipts.js` — POST /api/receipts/upload (memory upload → R2/local, content-sniffed) + GET /api/receipts/:id/url and GET /api/receipts/url?key= (signed, business-scoped)
-- `src/routes/reports.js` — GET daily (gross/set-aside/adjustments/net) + stock + trends (missing vs zero)
+- `src/routes/sales.js` — POST item sale (price+cost frozen, `receipt_id` consumes the photo) + auto-supersede of the day's quick totals (audited `day_total.superseded`; closes show one truthful number) + POST day-total + GET list
+- `src/routes/receipts.js` — POST /api/receipts/upload (memory upload → R2/local, content-sniffed) + DELETE /api/receipts/:id (discard) + GET /api/receipts/:id/url and GET /api/receipts/url?key= (signed, business-scoped)
+- `src/routes/reports.js` — GET daily (gross/set-aside/adjustments/net; superseded quick totals excluded but listed) + stock + trends (missing vs zero; superseded ignored)
 - `src/routes/ingredients.js` — CRUD + waste/spoilage adjust with reason
 - `src/routes/purchases.js` — purchase + auto cost-per-unit + stock add
 - `src/routes/recipes.js` — product-ingredient links
@@ -58,5 +58,5 @@ Owned by root `AGENTS.md`. Serves `delivery-management/` milestones M1–M5.
 - `src/routes/options.js` — GET/POST/PATCH lookup options (staff read-only, owner writes)
 - `src/routes/ocr.js` — M5 STUB suggest only, never auto-posts
 - `src/routes/alerts.js` — M5 stop: low-stock + upcoming bills (read-only)
-- `src/db/` — `repo.js` (single async API: memory + pg; options learn/backfill/rename + audit note), pool (`dbMode`, Neon SSL/timeouts/retry, error handler), `migrate.js` (unpooled URL, once-per-file tracking), `schema-m1.sql` through `schema-m7.sql`
-- `test/` — m1, m3, m4, m5 definition-of-done checks (M2 covered in m1 file) + auth/JWT/CORS/me checks + config startup-refusal checks + receipt upload/sniffing/scoping checks + options (backfill/learn/dedupe/staff-403/rename/edit-reason) (`helpers.js` seeds password fixtures; memory mode only)
+- `src/db/` — `repo.js` (single async API: memory + pg; options learn/backfill/rename + audit note + receipt delete + day-total supersede), pool (`dbMode`, Neon SSL/timeouts/retry, error handler), `migrate.js` (unpooled URL, once-per-file tracking), `schema-m1.sql` through `schema-m8.sql`
+- `test/` — m1, m3, m4, m5 definition-of-done checks (M2 covered in m1 file) + auth/JWT/CORS/me checks + config startup-refusal checks + receipt upload/sniffing/scoping checks + options (backfill/learn/dedupe/staff-403/rename/edit-reason) + replace (quick-total supersede + receipt delete-on-entry/discard) (`helpers.js` seeds password fixtures; memory mode only)
